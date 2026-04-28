@@ -112,7 +112,7 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 - [x] M4 公式逐步推导（公式列表 + 推导 Prompt + KaTeX 渲染 + 锚点回跳）
 - [x] M5 Markdown 导出（YAML front-matter + `chrome.downloads`）
 - [x] M6 打磨（错误处理、429/5xx 重试、空态、README）
-- [ ] M7 沉淀 Cursor Skill：`browser-extension-dev` + `git-push-flow`
+- [x] M7 沉淀 Cursor Skill：`browser-extension-dev`（已随仓库分享，见 [`.cursor/skills/`](./.cursor/skills/)）+ `git-push-flow`（个人全局，未入库）
 
 ### 待办（欢迎 PR）
 
