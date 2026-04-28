@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# WXT 构建产物与生成的类型
+.output/
+.wxt/
+
+# 开发/调试缓存
+stats.html
+stats-*.json
+*.log
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 编辑器
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
