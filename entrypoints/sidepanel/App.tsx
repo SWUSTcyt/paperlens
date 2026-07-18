@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PaperContent, Section } from '../../src/extractors/types';
 import { requestExtractFromActiveTab } from '../../src/bridge/extractBridge';
+import { detectKind } from '../../src/extractors/arxiv';
+import { loadPageCache, savePageCache } from '../../src/storage/cache';
+import { loadSettings, onSettingsChanged } from '../../src/storage/settings';
 import { SummaryTab, type SummaryResult } from './tabs/SummaryTab';
 import { DerivationTab, type DerivationResult } from './tabs/DerivationTab';
 import { ExportTab } from './tabs/ExportTab';
@@ -27,30 +30,107 @@ export default function App() {
   const [extractError, setExtractError] = useState<string | null>(null);
   const [summary, setSummary] = useState<SummaryResult | null>(null);
   const [derivations, setDerivations] = useState<Record<number, DerivationResult>>({});
+  // 已完成"缓存恢复"的 URL：用于门控持久化，避免在恢复完成前把空状态写回缓存
+  const [hydratedUrl, setHydratedUrl] = useState<string>('');
+  // 是否尚未配置任何 Provider 的 API Key（用于首次使用引导）
+  const [needsApiKey, setNeedsApiKey] = useState(false);
+  // 当前页面 URL 的引用，供异步切换时判断是否已被后续切换覆盖
+  const currentUrlRef = useRef<string>('');
 
+  // 切换到某个页面：更新页面信息，并按 URL 从会话缓存恢复已生成的内容
+  async function switchToPage(next: PageState) {
+    if (next.url === currentUrlRef.current && page) return; // 同一页，无需切换
+    currentUrlRef.current = next.url;
+    setPage(next);
+    setExtractError(null);
+
+    const cache = next.url ? await loadPageCache(next.url) : null;
+    // 若加载期间用户又切换了页面，放弃本次恢复，避免把旧页数据套到新页
+    if (currentUrlRef.current !== next.url) return;
+
+    setPaper(cache?.paper ?? null);
+    setSummary(cache?.summary ?? null);
+    setDerivations(cache?.derivations ?? {});
+    setHydratedUrl(next.url);
+  }
+
+  // 同步"当前活动标签页"的页面状态（切标签 / 页内跳转 / content 通知时调用）
+  async function syncActiveTab() {
+    try {
+      const st = await refreshActiveTab();
+      await switchToPage(st);
+    } catch (err) {
+      console.warn('[PaperLens] 获取当前页面信息失败：', err);
+      await switchToPage({ kind: 'unknown', url: '', title: '' });
+    }
+  }
+
+  // 监听标签页切换、URL 变化以及 content script 的 PAGE_READY，保持侧边栏与当前页一致
   useEffect(() => {
-    refreshActiveTab()
-      .then(setPage)
-      .catch((err) => {
-        console.warn('[PaperLens] 获取当前页面信息失败：', err);
-        setPage({ kind: 'unknown', url: '', title: '' });
-      });
+    void syncActiveTab();
 
-    const listener = (message: any) => {
-      if (message?.type === 'PAGE_READY' && message.payload) {
-        setPage({
-          kind: message.payload.kind ?? 'unknown',
-          url: message.payload.url ?? '',
-          title: message.payload.title ?? '',
-        });
-        setPaper(null);
-        setExtractError(null);
-        setSummary(null);
-        setDerivations({});
+    const onActivated = () => {
+      void syncActiveTab();
+    };
+    const onUpdated = (
+      _tabId: number,
+      changeInfo: { url?: string; status?: string },
+      tab: chrome.tabs.Tab,
+    ) => {
+      // 只关心"当前活动标签页"的 URL 变化或加载完成
+      if (tab?.active && (changeInfo.url || changeInfo.status === 'complete')) {
+        void syncActiveTab();
       }
     };
-    chrome.runtime.onMessage.addListener(listener);
-    return () => chrome.runtime.onMessage.removeListener(listener);
+    const onMessage = (message: any) => {
+      if (message?.type === 'PAGE_READY') {
+        void syncActiveTab();
+      }
+    };
+
+    chrome.tabs.onActivated.addListener(onActivated);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.runtime.onMessage.addListener(onMessage);
+    return () => {
+      chrome.tabs.onActivated.removeListener(onActivated);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.runtime.onMessage.removeListener(onMessage);
+    };
+    // 仅在挂载时注册一次；内部通过 ref 判断，无需依赖变化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 抽取/解读/推导结果变化时，写入该 URL 的会话缓存（恢复完成后才写，避免覆盖）
+  useEffect(() => {
+    if (!page?.url || hydratedUrl !== page.url) return;
+    void savePageCache(page.url, {
+      paper,
+      summary,
+      derivations,
+      savedAt: Date.now(),
+    });
+  }, [page?.url, hydratedUrl, paper, summary, derivations]);
+
+  // 检查是否已配置任一 Provider 的 API Key；设置变更时实时刷新引导条
+  useEffect(() => {
+    let disposed = false;
+    const check = async () => {
+      try {
+        const s = await loadSettings();
+        const anyKey = Object.values(s.providers).some(
+          (p) => p.apiKey && p.apiKey.trim().length > 0,
+        );
+        if (!disposed) setNeedsApiKey(!anyKey);
+      } catch (err) {
+        console.warn('[PaperLens] 读取设置失败：', err);
+      }
+    };
+    void check();
+    const off = onSettingsChanged(() => void check());
+    return () => {
+      disposed = true;
+      off();
+    };
   }, []);
 
   const supported = page && page.kind !== 'unknown';
@@ -61,6 +141,7 @@ export default function App() {
     try {
       const data = await requestExtractFromActiveTab();
       setPaper(data);
+      // 重新抽取视为对当前页的一次刷新，清空旧的解读与推导
       setSummary(null);
       setDerivations({});
     } catch (err) {
@@ -73,6 +154,8 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <Header page={page} />
+
+      {needsApiKey && <ApiKeyBanner />}
 
       <nav className="flex border-b border-slate-200 dark:border-slate-800">
         {TABS.map((t) => (
@@ -190,6 +273,20 @@ function ExtractBar({
   );
 }
 
+function ApiKeyBanner() {
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+      <span>尚未配置 API Key，暂时无法生成解读与推导。</span>
+      <button
+        onClick={() => chrome.runtime.openOptionsPage()}
+        className="shrink-0 rounded bg-amber-600 px-2 py-1 font-medium text-white hover:bg-amber-700"
+      >
+        去设置
+      </button>
+    </div>
+  );
+}
+
 function UnsupportedHint() {
   return (
     <div className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -226,20 +323,9 @@ async function refreshActiveTab(): Promise<PageState> {
   return { kind: classify(url), url, title };
 }
 
+// 复用抽取器里的 detectKind，避免页面类型判定逻辑在两处漂移
 function classify(url: string): PageState['kind'] {
-  try {
-    const u = new URL(url);
-    if (u.hostname.endsWith('ar5iv.labs.arxiv.org') || u.hostname.endsWith('ar5iv.org')) {
-      return 'ar5iv';
-    }
-    if (u.hostname.endsWith('arxiv.org')) {
-      if (u.pathname.startsWith('/abs/')) return 'abs';
-      if (u.pathname.startsWith('/html/')) return 'html';
-    }
-    return 'unknown';
-  } catch {
-    return 'unknown';
-  }
+  return detectKind(url) ?? 'unknown';
 }
 
 function countSections(sections: Section[]): number {

@@ -123,12 +123,13 @@ function parseSection(
   const anchor = sec.id || undefined;
 
   const formulaIds: number[] = [];
-
-  // 段落：<p class="ltx_p"> 或直接 <p>
-  const paraEls = Array.from(
-    sec.querySelectorAll(':scope > p, :scope > .ltx_para > p'),
-  ) as HTMLElement[];
   const paragraphs: string[] = [];
+
+  // 段落：不再局限于直接子节点。
+  // LaTeXML 会把正文包在 .ltx_para、列表 .ltx_itemize/.ltx_item、定理 .ltx_theorem 等容器里，
+  // 早期只取 `:scope > p` 会整段丢失。这里在本节范围内收集所有段落节点，
+  // 但遇到"子章节"边界就停止下探，避免把子章节的正文重复计入父节。
+  const paraEls = collectWithinSection(sec, 'p, .ltx_p');
   for (const p of paraEls) {
     const text = renderTextWithFormulas(p, (raw) => {
       const id = addFormula(raw.latex, raw.display, raw.anchor, path.join(' > '), trimContext(p.textContent));
@@ -138,14 +139,36 @@ function parseSection(
     if (text) paragraphs.push(text);
   }
 
-  // 独立 display 公式可能在段落外（如 <math display="block"> 直接是 section 子节点）
-  const looseMath = Array.from(
-    sec.querySelectorAll(':scope > math, :scope > .ltx_equation math, :scope > .ltx_equationgroup math'),
-  );
-  for (const m of looseMath) {
+  // 图/表说明文字（figcaption / .ltx_caption）也纳入正文，避免遗漏关键描述
+  const captionEls = collectWithinSection(sec, 'figcaption, .ltx_caption');
+  for (const cap of captionEls) {
+    const text = renderTextWithFormulas(cap, (raw) => {
+      const id = addFormula(raw.latex, raw.display, raw.anchor, path.join(' > '), trimContext(cap.textContent));
+      formulaIds.push(id);
+      return id;
+    });
+    if (text) paragraphs.push(text);
+  }
+
+  // 独立 display 公式（不在段落内的方程块，如 .ltx_equation / .ltx_equationgroup，
+  // 或直接作为 section 子节点的 <math display="block">）。
+  // 用 renderTextWithFormulas 已经写入的 data-pl-fid 做去重，避免与段落内公式重复计入。
+  const looseMathNodes: Element[] = [];
+  for (const eq of collectWithinSection(sec, '.ltx_equation, .ltx_equationgroup')) {
+    looseMathNodes.push(...Array.from(eq.querySelectorAll('math')));
+  }
+  looseMathNodes.push(...Array.from(sec.querySelectorAll(':scope > math')));
+  for (const m of looseMathNodes) {
+    if ((m as HTMLElement).hasAttribute('data-pl-fid')) continue; // 已在段落内处理过，跳过
     const raw = extractLatexFromMathNode(m);
     if (!raw) continue;
     const id = addFormula(raw.latex, raw.display, raw.anchor, path.join(' > '), undefined);
+    // 打标：既供"回跳原文"精确滚动，也用于本轮去重
+    try {
+      (m as HTMLElement).setAttribute('data-pl-fid', String(id));
+    } catch {
+      // 忽略：极少数节点不可写属性
+    }
     formulaIds.push(id);
   }
 
@@ -184,29 +207,66 @@ function parseFallbackByHeadings(
   const children = Array.from(article.children) as HTMLElement[];
   let current: Section | null = null;
 
+  const makeSection = (level: number, heading: string, anchor?: string): Section => ({
+    level,
+    heading,
+    paragraphs: [],
+    formulaIds: [],
+    anchor,
+    children: [],
+  });
+
   for (const child of children) {
     const tag = child.tagName.toLowerCase();
     if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
-      current = {
-        level: tag === 'h1' ? 1 : tag === 'h2' ? 2 : 3,
-        heading: normalize(child.textContent),
-        paragraphs: [],
-        formulaIds: [],
-        anchor: child.id || undefined,
-        children: [],
-      };
+      current = makeSection(
+        tag === 'h1' ? 1 : tag === 'h2' ? 2 : 3,
+        normalize(child.textContent),
+        child.id || undefined,
+      );
       sections.push(current);
-    } else if (current) {
+    } else {
+      // 首个标题之前的正文不再丢弃：懒创建一个无标题的"前导段"来承接
+      if (!current) {
+        current = makeSection(1, '', undefined);
+        sections.push(current);
+      }
+      const active = current;
       const text = renderTextWithFormulas(child, (raw) => {
-        const id = addFormula(raw.latex, raw.display, raw.anchor, current?.heading ?? '', trimContext(child.textContent));
-        current!.formulaIds.push(id);
+        const id = addFormula(raw.latex, raw.display, raw.anchor, active.heading, trimContext(child.textContent));
+        active.formulaIds.push(id);
         return id;
       });
-      if (text) current.paragraphs.push(text);
+      if (text) active.paragraphs.push(text);
     }
   }
 
-  return sections;
+  // 过滤掉完全空的前导段（既无标题也无正文与公式）
+  return sections.filter(
+    (s) => s.heading || s.paragraphs.length > 0 || s.formulaIds.length > 0,
+  );
+}
+
+/** 判断元素是否是"子章节"边界：遍历正文时不应跨入，交由 parseSection 递归处理 */
+function isSubsectionBoundary(el: Element): boolean {
+  return el.matches('section, .ltx_subsection, .ltx_subsubsection, .ltx_paragraph');
+}
+
+/**
+ * 在 section 内收集匹配 selector 的元素，但遇到子章节即停止下探，
+ * 避免把子章节的正文/公式重复计入父节。
+ */
+function collectWithinSection(root: Element, selector: string): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  const walk = (node: Element) => {
+    for (const child of Array.from(node.children)) {
+      if (isSubsectionBoundary(child)) continue; // 子章节交由递归处理
+      if (child.matches(selector)) out.push(child as HTMLElement);
+      walk(child);
+    }
+  };
+  walk(root);
+  return out;
 }
 
 function normalize(text?: string | null): string {

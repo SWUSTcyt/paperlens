@@ -13,6 +13,15 @@ marked.setOptions({
   breaks: true,
 });
 
+// 强制所有外链新标签打开并带 rel="noopener noreferrer"，防止 tabnabbing。
+// marked 生成的 <a> 默认不带 rel，这里在 DOMPurify 清洗阶段补上（模块级只注册一次）。
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A' && node.getAttribute('href')) {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
+
 export function MarkdownView({ content, className }: { content: string; className?: string }) {
   const html = useMemo(() => {
     const { md, items } = preprocessMath(content ?? '');

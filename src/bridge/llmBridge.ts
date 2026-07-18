@@ -86,7 +86,16 @@ export async function* chatStream(opts: ChatStreamOptions): AsyncGenerator<ChatS
       const msg = queue.length > 0 ? queue.shift()! : await new Promise<LlmServerMessage | null>((resolve) => {
         resolveNext = resolve;
       });
-      if (!msg) break;
+      if (!msg) {
+        // Port 断开（收到 null）。区分两种情况：
+        //   - 用户主动中止：抛 AbortError，让 chatOnce 等上层能感知"未正常完成"，
+        //     从而不会把空/残缺内容当成功结果（例如 Map-Reduce 的逐章压缩）。
+        //   - 其他原因断开（如服务端结束）：按自然结束处理。
+        if (opts.signal?.aborted) {
+          throw new DOMException('请求已被用户中止', 'AbortError');
+        }
+        break;
+      }
 
       if (msg.type === 'ready') {
         yield { type: 'ready', providerId: msg.providerId, model: msg.model };

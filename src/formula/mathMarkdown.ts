@@ -39,9 +39,11 @@ export function renderMathPlaceholders(html: string, items: MathItem[]): string 
     const item = items[Number(idx)];
     if (!item) return '';
     try {
+      // throwOnError: true —— 让非法公式抛错并走下方兜底，
+      // 而不是渲染成 KaTeX 的红色报错块（对用户更友好）
       return katex.renderToString(item.tex, {
         displayMode: item.display,
-        throwOnError: false,
+        throwOnError: true,
         strict: 'ignore',
         output: 'html',
       });
@@ -62,9 +64,10 @@ function escapeHtml(s: string): string {
 /** 直接把一段 LaTeX 渲染成 HTML（供公式列表展示） */
 export function renderLatexToHtml(latex: string, display = false): string {
   try {
+    // 同 renderMathPlaceholders：渲染失败回退为原样 <code>，避免展示红色报错块
     return katex.renderToString(latex, {
       displayMode: display,
-      throwOnError: false,
+      throwOnError: true,
       strict: 'ignore',
       output: 'html',
     });

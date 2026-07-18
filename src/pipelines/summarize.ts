@@ -22,6 +22,15 @@ const MAP_REDUCE_THRESHOLD = 8000;
 const MAP_TARGET_TOKENS = 500;
 /** Reduce 阶段：送入最终 prompt 的整体 token 预算 */
 const REDUCE_BUDGET_TOKENS = 6000;
+/**
+ * prompt 固定开销预留（system 提示词 + 元信息 + 输出格式说明约占的 token）。
+ * estimateTokens 是轻量启发式、偏乐观，这里预留余量避免真实 token 超出小上下文模型。
+ */
+const PROMPT_OVERHEAD_TOKENS = 600;
+/** Map 阶段：单章节送入模型的输入 token 上限（原为硬编码 3000，过小会丢长章节内容） */
+const PER_SECTION_INPUT_TOKENS = 4500;
+/** Map 阶段：单章节输出的 token 上限（略高于目标，留一点头部空间） */
+const MAP_OUTPUT_MAX_TOKENS = MAP_TARGET_TOKENS + 200;
 
 export interface SummarizeOptions {
   verbosity: Verbosity;
@@ -57,8 +66,8 @@ export async function* summarizePaper(
   let bodyForPrompt: string;
 
   if (bodyTokens <= MAP_REDUCE_THRESHOLD || paper.sections.length === 0) {
-    // 短论文或 abs 页（无章节）：单次请求即可
-    bodyForPrompt = truncateByTokens(body, MAP_REDUCE_THRESHOLD);
+    // 短论文或 abs 页（无章节）：单次请求即可（预留 prompt 固定开销，避免超上下文）
+    bodyForPrompt = truncateByTokens(body, MAP_REDUCE_THRESHOLD - PROMPT_OVERHEAD_TOKENS);
   } else {
     // 长论文：Map 阶段 —— 对每个顶层章节做精简
     const topSections = paper.sections;
@@ -72,10 +81,12 @@ export async function* summarizePaper(
 
       const sec = topSections[i];
       const sectionText = flattenSectionsToText([sec]);
-      const truncated = truncateByTokens(sectionText, 3000); // 单章节也给一个上限
+      const truncated = truncateByTokens(sectionText, PER_SECTION_INPUT_TOKENS); // 单章节输入上限
       const { content } = await chatOnce({
         task: 'summary',
         signal: opts.signal,
+        // 约束单章节压缩的输出长度，避免个别章节输出过长拖慢/超预算
+        overrides: { maxTokens: MAP_OUTPUT_MAX_TOKENS },
         messages: [
           {
             role: 'system',
@@ -93,8 +104,11 @@ export async function* summarizePaper(
       mapResults.push(`## ${sec.heading || `章节 ${i + 1}`}\n${content.trim()}`);
     }
 
-    // 合并 Map 结果，保证不超 REDUCE_BUDGET_TOKENS
-    bodyForPrompt = truncateByTokens(mapResults.join('\n\n'), REDUCE_BUDGET_TOKENS);
+    // 合并 Map 结果，保证不超 Reduce 预算（同样预留 prompt 固定开销）
+    bodyForPrompt = truncateByTokens(
+      mapResults.join('\n\n'),
+      REDUCE_BUDGET_TOKENS - PROMPT_OVERHEAD_TOKENS,
+    );
   }
 
   if (opts.signal?.aborted) return;
