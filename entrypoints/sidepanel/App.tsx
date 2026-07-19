@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PaperContent, Section } from '../../src/extractors/types';
 import { requestExtractFromActiveTab } from '../../src/bridge/extractBridge';
+import { detectPdfUrl, extractPdfFromActiveTab } from '../../src/bridge/pdfSource';
 import { detectKind } from '../../src/extractors/arxiv';
 import { loadPageCache, savePageCache } from '../../src/storage/cache';
 import { loadSettings, onSettingsChanged } from '../../src/storage/settings';
@@ -11,7 +12,7 @@ import { ExportTab } from './tabs/ExportTab';
 type TabKey = 'summary' | 'derivation' | 'export';
 
 interface PageState {
-  kind: 'abs' | 'html' | 'ar5iv' | 'unknown';
+  kind: 'abs' | 'html' | 'ar5iv' | 'pdf' | 'unknown';
   url: string;
   title: string;
 }
@@ -139,7 +140,11 @@ export default function App() {
     setExtracting(true);
     setExtractError(null);
     try {
-      const data = await requestExtractFromActiveTab();
+      // PDF 来源：在 SidePanel 内 fetch 字节并本地解析；其余走 Content Script 抽取
+      const data =
+        page?.kind === 'pdf'
+          ? await extractPdfFromActiveTab()
+          : await requestExtractFromActiveTab();
       setPaper(data);
       // 重新抽取视为对当前页的一次刷新，清空旧的解读与推导
       setSummary(null);
@@ -184,6 +189,7 @@ export default function App() {
               paper={paper}
               extracting={extracting}
               error={extractError}
+              isPdf={page?.kind === 'pdf'}
               onExtract={handleExtract}
             />
             {activeTab === 'summary' && (
@@ -229,22 +235,37 @@ function ExtractBar({
   paper,
   extracting,
   error,
+  isPdf,
   onExtract,
 }: {
   paper: PaperContent | null;
   extracting: boolean;
   error: string | null;
+  isPdf: boolean;
   onExtract: () => void;
 }) {
+  // PDF 来源目前不抽公式，展示"页数 · 章节"，网页来源展示"公式 · 章节"
+  const idleLabel = isPdf ? '解析本页 PDF' : '抽取本页';
+  const busyLabel = isPdf ? '解析中…' : '抽取中…';
+  const doneLabel = isPdf ? '重新解析' : '重新抽取';
   return (
     <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/40">
       <div className="flex items-center justify-between gap-2">
         <div className="text-slate-600 dark:text-slate-300">
           {paper ? (
-            <>
-              已抽取：<span className="font-medium">{paper.formulas.length}</span> 个公式 ·{' '}
-              <span className="font-medium">{countSections(paper.sections)}</span> 个章节
-            </>
+            paper.source === 'pdf' ? (
+              <>
+                已解析：<span className="font-medium">{paper.pageCount ?? 0}</span> 页 ·{' '}
+                <span className="font-medium">{countSections(paper.sections)}</span> 个章节
+              </>
+            ) : (
+              <>
+                已抽取：<span className="font-medium">{paper.formulas.length}</span> 个公式 ·{' '}
+                <span className="font-medium">{countSections(paper.sections)}</span> 个章节
+              </>
+            )
+          ) : isPdf ? (
+            <>点击右侧按钮，解析当前 PDF（原文仍显示在标签页，可边看边读）</>
           ) : (
             <>点击右侧按钮，从当前页抽取论文结构</>
           )}
@@ -254,7 +275,7 @@ function ExtractBar({
           onClick={onExtract}
           disabled={extracting}
         >
-          {extracting ? '抽取中…' : paper ? '重新抽取' : '抽取本页'}
+          {extracting ? busyLabel : paper ? doneLabel : idleLabel}
         </button>
       </div>
       {error && (
@@ -302,6 +323,10 @@ function UnsupportedHint() {
         <li>
           ar5iv 镜像：<code className="rounded bg-slate-100 px-1 dark:bg-slate-800">ar5iv.labs.arxiv.org/html/...</code>
         </li>
+        <li>
+          arXiv PDF：<code className="rounded bg-slate-100 px-1 dark:bg-slate-800">arxiv.org/pdf/...</code>
+          （可边看 PDF 边解读）
+        </li>
       </ul>
     </div>
   );
@@ -324,7 +349,9 @@ async function refreshActiveTab(): Promise<PageState> {
 }
 
 // 复用抽取器里的 detectKind，避免页面类型判定逻辑在两处漂移
+// PDF 优先判定（arXiv /pdf/），其次是 arXiv 网页三种，最后 unknown
 function classify(url: string): PageState['kind'] {
+  if (detectPdfUrl(url)) return 'pdf';
   return detectKind(url) ?? 'unknown';
 }
 

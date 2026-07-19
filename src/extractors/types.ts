@@ -5,6 +5,23 @@
 /** arXiv 页面类型 */
 export type ArxivPageKind = 'abs' | 'html' | 'ar5iv';
 
+/**
+ * 论文来源大类：
+ * - arxiv：来自 arXiv 网页（abs / html / ar5iv），公式为真实 LaTeX
+ * - pdf：来自 PDF 字节解析（arXiv /pdf/ 或本地文件）
+ * 缺省视为 'arxiv'，以保证既有代码零回归。
+ */
+export type PaperSource = 'arxiv' | 'pdf';
+
+/**
+ * 公式支持程度：
+ * - latex：有真实 LaTeX 源（arXiv 网页）
+ * - heuristic：由 PDF 启发式识别 + AI 还原（可能不准，实验性）
+ * - none：不支持公式抽取（如 PDF MVP 阶段）
+ * 缺省视为 'latex'。
+ */
+export type FormulaSupport = 'latex' | 'heuristic' | 'none';
+
 /** 公式节点 */
 export interface Formula {
   /** 扁平索引，1 起，便于在 Markdown 导出时形成 "公式 (1)" 这样的编号 */
@@ -19,6 +36,10 @@ export interface Formula {
   context?: string;
   /** 原文 DOM id，用于回跳 */
   anchor?: string;
+  /** 所在 PDF 页码（1 起）；网页来源为空。PDF 无法回跳 DOM，用页码代替定位 */
+  page?: number;
+  /** PDF 启发式识别的置信度 0–1；网页来源为空 */
+  confidence?: number;
 }
 
 /** 章节（支持层级） */
@@ -68,6 +89,12 @@ export interface PaperContent {
   extractedAt: number;
   /** 抽取过程中遇到的警告（如某些字段缺失） */
   warnings: string[];
+  /** 来源大类；缺省视为 'arxiv' */
+  source?: PaperSource;
+  /** 公式支持程度；缺省视为 'latex' */
+  formulaSupport?: FormulaSupport;
+  /** PDF 页数；网页来源为空 */
+  pageCount?: number;
 }
 
 /** 空白壳，方便 extractor 渐进填充 */

@@ -33,16 +33,16 @@ export function DerivationTab({ paper, results, onResultsChange }: Props) {
   }
 
   if (paper.formulas.length === 0) {
-    return (
-      <Placeholder
-        title="公式推导"
-        desc={
-          paper.kind === 'abs'
-            ? '当前是摘要页（/abs/），不含 <math> 公式。请打开论文的 HTML 或 ar5iv 版本后再抽取。'
-            : '此页未抽到公式。可能该论文不含 <math> 标签。'
-        }
-      />
-    );
+    let desc: string;
+    if (paper.source === 'pdf') {
+      desc =
+        'PDF 来源暂不支持公式抽取（PDF 内没有 LaTeX 源码，公式识别为后续实验功能）。若需公式逐步推导，请打开该论文的 arXiv HTML 或 ar5iv 版本后再抽取。';
+    } else if (paper.kind === 'abs') {
+      desc = '当前是摘要页（/abs/），不含 <math> 公式。请打开论文的 HTML 或 ar5iv 版本后再抽取。';
+    } else {
+      desc = '此页未抽到公式。可能该论文不含 <math> 标签。';
+    }
+    return <Placeholder title="公式推导" desc={desc} />;
   }
 
   const selected = selectedId != null ? paper.formulas.find((f) => f.id === selectedId) ?? null : null;

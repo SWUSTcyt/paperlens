@@ -1,11 +1,12 @@
 # PaperLens
 
-一款专注 arXiv 的 Chrome 扩展：在打开论文页面时一键生成**论文解读**、**公式逐步推导**，并**导出为 Markdown** 文件。
+一款专注 arXiv 的 Chrome 扩展：在打开论文页面（含 **`/pdf/`**）时一键生成**论文解读**、**公式逐步推导**，并**导出为 Markdown** 文件。
 
 ## 特性
 
+- **多来源抽取**：支持 arXiv 摘要页（`/abs`）、HTML 全文（`/html`）、ar5iv 镜像，以及 **arXiv PDF（`/pdf`）**。PDF 场景下原文仍显示在标签页、解析结果在侧边栏，**边看边读**。
 - **论文解读**：结构化总结研究问题 / 方法 / 主要贡献 / 实验与结果 / 结论；长论文自动 Map-Reduce 压缩，支持简洁 / 详细两档粒度。
-- **公式逐步推导**：从定义开始逐步推导，符号拆解 + 关键运算解析 + 小例子三段式；点击「回跳原文」可在原页面高亮公式出处。
+- **公式逐步推导**：从定义开始逐步推导，符号拆解 + 关键运算解析 + 小例子三段式；点击「回跳原文」可在原页面高亮公式出处（PDF 暂不抽公式，请改用 HTML/ar5iv）。
 - **Markdown 导出**：一键保存为 `.md` 文件，含 YAML front-matter（适合 Obsidian / Typora），公式保留 `$$...$$` 语法。
 - **BYOK（Bring Your Own Key）**：支持 **Qwen（DashScope 兼容模式）/ DeepSeek / OpenAI / Anthropic** 四家 LLM，API Key 仅存本地；支持为"解读 / 推导"分别绑定不同模型（例如推导用 `deepseek-reasoner`）。
 - **流式渲染**：所有 LLM 调用走 SSE 流式，SidePanel 边生成边显示。
@@ -18,6 +19,7 @@
 - Chrome Manifest V3（SidePanel API）
 - Markdown：`marked` + `DOMPurify`
 - 公式：`katex`
+- PDF 解析：`pdfjs-dist`（在 SidePanel 内本地解析，Worker 独立懒加载）
 - 可选后续：`tiktoken`（更精确的 token 计数）
 
 ## 快速开始
@@ -47,6 +49,7 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
    - 摘要页：<https://arxiv.org/abs/2310.06825>
    - HTML 全文：<https://arxiv.org/html/2310.06825>
    - ar5iv：<https://ar5iv.labs.arxiv.org/html/2310.06825>
+   - PDF：<https://arxiv.org/pdf/2310.06825>（在 PDF 标签页点「解析本页 PDF」，可边看 PDF 边读解读）
 6. 点击工具栏的 PaperLens 图标 → SidePanel 打开
 7. 首次使用请先点底部「设置 / 配置 API Key」，填入至少一家 LLM 的 Key 并「测试连接」
 
@@ -77,6 +80,7 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 │       └── ...
 ├── src/                             # 业务代码
 │   ├── extractors/                  # arXiv 页面抽取（abs / latexml）
+│   ├── pdf/                         # PDF 解析（pdf.js 懒加载 + 版面重建 → PaperContent）
 │   ├── formula/                     # <math> 抽取 + Markdown ↔ KaTeX 桥
 │   ├── llm/                         # LLM Provider 抽象与实现
 │   │   ├── providers/
@@ -113,8 +117,11 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 - [x] M5 Markdown 导出（YAML front-matter + `chrome.downloads`）
 - [x] M6 打磨（错误处理、429/5xx 重试、空态、README）
 - [x] M7 沉淀 Cursor Skill：`browser-extension-dev`（已随仓库分享，见 [`.cursor/skills/`](./.cursor/skills/)）+ `git-push-flow`（个人全局，未入库）
+- [x] M8 arXiv PDF 解析（甜点场景）：在 `/pdf/` 页 fetch 字节 + pdf.js 本地解析 → 论文解读 / 导出打通（详见 [`docs/plan-pdf-extraction.md`](./docs/plan-pdf-extraction.md)）
 
 ### 待办（欢迎 PR）
+
+- **PDF 能力扩展**（见 [`docs/plan-pdf-extraction.md`](./docs/plan-pdf-extraction.md)）：任意在线 PDF（按需申请权限）、本地 `file://` 与文件上传兜底、双栏/页眉页脚重建增强、PDF 公式的实验性识别与推导。
 
 - **图标**：当前未提供 PNG 图标，Chrome 会使用默认灰图标。替换方案：把 16/32/48/128 像素的 PNG 放到 `public/icon/`。
 - **KaTeX 字体瘦身**：默认打包了 Main/AMS/Caligraphic/Fraktur 等全部字形，可按需剔除仅保留 Main+AMS。

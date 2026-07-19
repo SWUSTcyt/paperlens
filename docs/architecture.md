@@ -3,19 +3,21 @@
 > 目的：给任何接手者（含在 Codex/其他 IDE 中继续开发的自己）一份「项目当前是怎么运作的」权威参考。
 > 阅读顺序建议：本文件 → `docs/plan-pdf-extraction.md`（下一个大功能方案）→ `docs/dev-notes.md`（时间线与踩坑）。
 >
-> 最后更新：2026-07（M0–M7 完成 + 公式列表按章节重组、display 识别修复之后）。
+> 最后更新：2026-07（M0–M8：含 arXiv `/pdf/` 甜点场景的本地 PDF 解析）。
 
 ---
 
 ## 1. 一句话概述
 
-PaperLens 是一个 Chrome Manifest V3 扩展，在 **arXiv 论文页**（`/abs`、`/html`、`ar5iv` 镜像）上：
+PaperLens 是一个 Chrome Manifest V3 扩展，在 **arXiv 论文页**（`/abs`、`/html`、`ar5iv` 镜像，以及 **`/pdf/`**）上：
 
-1. 把页面 DOM 抽取成统一的 `PaperContent` 结构；
+1. 把页面 DOM（或 PDF 字节）抽取成统一的 `PaperContent` 结构；
 2. 走 BYOK 的 LLM（Qwen / DeepSeek / OpenAI / Anthropic）生成 **论文解读** 与 **公式逐步推导**；
 3. 一键 **导出 Markdown**（含 `$$...$$` 公式与 YAML front-matter）。
 
-关键设计原则：**抽取来源对下游透明**——所有 extractor 归一到 `PaperContent`，Summary / Derivation / Export 三条链路不关心数据来自哪种页面。这一点是后续接入「本地 PDF」的地基。
+关键设计原则：**抽取来源对下游透明**——所有 extractor 归一到 `PaperContent`，Summary / Derivation / Export 三条链路不关心数据来自 DOM 还是 PDF。
+
+**PDF 路径要点**：不读 Chrome 内置阅读器沙箱；SidePanel 按 `tab.url` 自己 `fetch` 字节，用 pdf.js 解析——原文留在标签页，侧边栏出结果，天然并排。详见 `docs/plan-pdf-extraction.md`。
 
 ---
 
@@ -71,9 +73,13 @@ entrypoints/
 src/
   extractors/              页面 → PaperContent（来源归一层）
     types.ts               PaperContent / Section / Formula / Reference 定义 + parseArxivId
+                           （含 source/formulaSupport/pageCount 等可选字段，兼容 PDF 来源）
     arxiv.ts               detectKind(url) + extractPaper(doc,url) 分发入口
     abs.ts                 /abs 摘要页抽取
     latexml.ts             /html + ar5iv（LaTeXML 生成的 HTML）抽取
+  pdf/                      PDF 来源（arXiv /pdf/，字节 → PaperContent）
+    loadPdfjs.ts           pdf.js 懒加载 + Worker 配置（?url 导入）
+    extractPdf.ts          版面重建（分栏/聚行/去页眉页脚/分段）+ 结构识别
   formula/
     extract.ts             从 <math> DOM 节点提取 LaTeX（含 display 推断）
     mathMarkdown.ts        Markdown 里 $...$ / $$...$$ ↔ KaTeX 渲染占位
@@ -86,6 +92,7 @@ src/
     sse.ts                 SSE 行迭代器
   bridge/
     extractBridge.ts       SidePanel→Content：requestExtractFromActiveTab / requestScrollToFormula
+    pdfSource.ts           SidePanel：detectPdfUrl + extractPdfFromActiveTab（fetch PDF 字节并解析）
     llmBridge.ts           SidePanel→Background：chatStream / chatOnce（含 abort 透传）
   pipelines/
     summarize.ts           解读流水线（长文 Map-Reduce、token 预算控制）
@@ -110,9 +117,9 @@ src/
 
 ```ts
 interface PaperContent {
-  arxivId: string;        // arXiv id；PDF 来源时为空
-  url: string;            // 当前页 URL；PDF 来源需要一个稳定的合成 key（见 PDF 方案）
-  kind: 'abs' | 'html' | 'ar5iv';   // ⚠️ 目前是 arXiv 专用联合类型，PDF 需扩展
+  arxivId: string;        // arXiv id；无法识别时为空
+  url: string;            // 当前页 URL（arXiv /pdf/ 用真实 URL；上传兜底才用合成 key）
+  kind: 'abs' | 'html' | 'ar5iv';   // PaperContent.kind 仍用 arXiv 联合类型；PDF 用 source='pdf' 区分（kind 占位 'html'）
   title: string;
   authors: string[];
   categories: string[];
@@ -170,7 +177,7 @@ interface Formula {
 
 ### 5.3 tab 同步与缓存 hydrate（易踩坑点）
 
-`App.tsx` 监听 `chrome.tabs.onActivated / onUpdated` 和 content 的 `PAGE_READY`，切页时按 URL 从 `chrome.storage.session` 恢复已生成内容。用 `hydratedUrl` 门控，避免「恢复完成前把空状态写回缓存」的竞态。**PDF 来源要复用这套机制，但 PDF 不绑定 tab，需要一个稳定的合成 URL key（见 PDF 方案）。**
+`App.tsx` 监听 `chrome.tabs.onActivated / onUpdated` 和 content 的 `PAGE_READY`，切页时按 URL 从 `chrome.storage.session` 恢复已生成内容。用 `hydratedUrl` 门控，避免「恢复完成前把空状态写回缓存」的竞态。**arXiv `/pdf/` 直接用真实 URL 作缓存 key；仅上传兜底路径才需要合成 key（Phase B）。**
 
 ---
 
@@ -203,5 +210,5 @@ interface Formula {
 
 - **ar5iv 的 `<math>` 会把块级公式也标成 `display="inline"`**：`formula/extract.ts` 已改为从祖先容器（`.ltx_equation` 等）推断 display，勿回退。
 - **KaTeX** 使用 `throwOnError: true`，渲染失败回退 `<code>`，避免坏公式污染整页。
-- **权限最小化**：`host_permissions` 仅含 arXiv + 四个 Provider 域名。新增来源尽量不扩大权限（例如 PDF 用文件选择/拖拽而非 `file://`）。
+- **权限最小化**：`host_permissions` 仅含 arXiv + 四个 Provider 域名。arXiv `/pdf/` 复用现有权限；任意域名 PDF 用 `optional_host_permissions` 按需申请（Phase B）。
 - **chrome.storage.session** 有容量上限（约 10MB/键空间量级），缓存整篇 paper 可以，勿缓存原始二进制。

@@ -13,6 +13,18 @@
 - **会话缓存与 tab 同步**（`storage/cache.ts` + `App.tsx`）：按 URL 缓存 paper/summary/derivations，切 tab / 页内跳转时恢复；用 `hydratedUrl` 门控避免竞态。
 - **提交环境约定**：Windows 下 git 操作走 Git Bash（PowerShell 对 `<>`/`&&`/heredoc 解析有坑），复杂 commit message 用临时文件 + `git commit -F`。
 
+## M8 arXiv PDF 解析（甜点场景）
+
+- **核心认识**：Chrome 内置 PDF 阅读器是封闭沙箱，content script 抓不到内容；但标签页 `tab.url` 就是 PDF 地址，扩展可**自己 fetch 同一 URL 的字节**用 pdf.js 独立解析——绕开沙箱，且原文继续显示在标签页，解析结果在侧边栏，天然并排。
+- **甜点场景**：arXiv `/pdf/` 链接。`host_permissions` 已含 `*://*.arxiv.org/*`，fetch 无需新权限，是投入最小、收益最大的切入点。
+- **pdf.js（pdfjs-dist 6.1.200）集成**：
+  - Worker 用 Vite 的 `?url` 导入：`import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'` → 设 `GlobalWorkerOptions.workerSrc`。构建后 worker 输出为扩展内 `assets/pdf.worker.min-*.mjs`（同源，无需 `web_accessible_resources`）。
+  - 主库用动态 `import('pdfjs-dist')` 懒加载，构建后是独立 chunk（`chunks/pdf-*.js` ~425kB），不拖累 SidePanel 首屏。
+  - `tsc` 识别 `?url`：在 `src/globals.d.ts` 加 `declare module '*?url'`。
+- **版面重建**（`src/pdf/extractPdf.ts`）：分栏（中缝双峰判据）→ 按 y 聚行、按 x 拼接 → 去页眉页脚（跨页重复短文本 + 纯页码）→ 去连字符/分段 → 标题（首页最大字号簇）/摘要（Abstract 定位）/章节（编号或大字号）/参考文献（[n]、n. 切分）。任何步骤失败降级为整篇纯文本，保证解读可用。
+- **数据模型**：`types.ts` 只加**可选**字段（`source`/`formulaSupport`/`pageCount` + `Formula.page`/`confidence`），arXiv 路径零回归。
+- **MVP 边界**：`formulaSupport='none'`，公式列表为空；公式识别（PDF 内无 LaTeX，需启发式 + AI 还原）留待 Phase C。
+
 ## M0 环境搭建
 
 ### 关键选型
