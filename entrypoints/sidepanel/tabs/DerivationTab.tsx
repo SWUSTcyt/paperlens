@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import type { Formula, PaperContent } from '../../../src/extractors/types';
+import type { Formula, PaperContent, Section } from '../../../src/extractors/types';
 import { derivePipeline } from '../../../src/pipelines/derive';
 import { MarkdownView } from '../../../src/components/MarkdownView';
 import { renderLatexToHtml } from '../../../src/formula/mathMarkdown';
@@ -74,6 +74,78 @@ export function DerivationTab({ paper, results, onResultsChange }: Props) {
 
 /* ---------------- 列表视图 ---------------- */
 
+/** 去重后的一条公式条目（记录相同 latex 的出现次数） */
+interface FormulaEntry {
+  formula: Formula;
+  count: number;
+}
+
+/** 一个章节分组：主公式（display + 复杂行内）与符号（单变量/短公式）分层，但都可点 */
+interface SectionGroup {
+  key: string;
+  heading: string;
+  depth: number;
+  main: FormulaEntry[];
+  symbols: FormulaEntry[];
+}
+
+/**
+ * 单变量 / 极短行内公式：作为"符号"弱化展示（排后、变小），但绝不隐藏，
+ * 以照顾数学基础较弱的用户逐个点开学习符号含义。
+ */
+function isSymbolFormula(f: Formula): boolean {
+  return !f.display && f.latex.trim().length <= 2;
+}
+
+/** 对一组公式：合并完全相同的 latex（累计次数），再拆成"主公式 / 符号"两层 */
+function dedupAndTier(formulas: Formula[]): { main: FormulaEntry[]; symbols: FormulaEntry[] } {
+  const seen = new Map<string, FormulaEntry>();
+  const order: FormulaEntry[] = [];
+  for (const f of formulas) {
+    const key = f.latex.trim();
+    const exist = seen.get(key);
+    if (exist) {
+      exist.count += 1;
+      continue;
+    }
+    const entry: FormulaEntry = { formula: f, count: 1 };
+    seen.set(key, entry);
+    order.push(entry);
+  }
+  const main = order.filter((e) => !isSymbolFormula(e.formula));
+  // display 块级公式排在前面，其余保持原文顺序（稳定排序）
+  main.sort((a, b) => Number(b.formula.display) - Number(a.formula.display));
+  const symbols = order.filter((e) => isSymbolFormula(e.formula));
+  return { main, symbols };
+}
+
+/** 按章节树把公式分组（文档顺序；depth 用于缩进展示） */
+function buildSectionGroups(
+  sections: Section[],
+  byId: Map<number, Formula>,
+  keep: (f: Formula) => boolean,
+  depth = 0,
+): SectionGroup[] {
+  const out: SectionGroup[] = [];
+  sections.forEach((s, idx) => {
+    const fs = s.formulaIds
+      .map((id) => byId.get(id))
+      .filter((f): f is Formula => !!f && keep(f));
+    if (fs.length > 0) {
+      const { main, symbols } = dedupAndTier(fs);
+      out.push({
+        key: `${depth}-${idx}-${s.heading}`,
+        heading: s.heading || '(前言)',
+        depth,
+        main,
+        symbols,
+      });
+    }
+    out.push(...buildSectionGroups(s.children, byId, keep, depth + 1));
+  });
+  return out;
+}
+
 function FormulaList({
   paper,
   query,
@@ -87,15 +159,40 @@ function FormulaList({
   results: Record<number, DerivationResult>;
   onSelect: (id: number) => void;
 }) {
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return paper.formulas;
-    return paper.formulas.filter(
-      (f) =>
-        f.latex.toLowerCase().includes(q) ||
-        (f.sectionPath ?? '').toLowerCase().includes(q),
-    );
-  }, [paper.formulas, query]);
+  const byId = useMemo(() => {
+    const m = new Map<number, Formula>();
+    for (const f of paper.formulas) m.set(f.id, f);
+    return m;
+  }, [paper.formulas]);
+
+  const q = query.trim().toLowerCase();
+
+  const groups = useMemo(() => {
+    const keep = (f: Formula) =>
+      !q ||
+      f.latex.toLowerCase().includes(q) ||
+      (f.sectionPath ?? '').toLowerCase().includes(q);
+
+    const gs = buildSectionGroups(paper.sections, byId, keep);
+
+    // 兜底：不在任何章节 formulaIds 里的公式（理论上少见）归入"其他公式"
+    const covered = new Set<number>();
+    const walk = (secs: Section[]) => {
+      for (const s of secs) {
+        s.formulaIds.forEach((id) => covered.add(id));
+        walk(s.children);
+      }
+    };
+    walk(paper.sections);
+    const orphans = paper.formulas.filter((f) => !covered.has(f.id) && keep(f));
+    if (orphans.length > 0) {
+      const { main, symbols } = dedupAndTier(orphans);
+      gs.push({ key: 'orphans', heading: '其他公式', depth: 0, main, symbols });
+    }
+    return gs;
+  }, [paper.sections, paper.formulas, byId, q]);
+
+  const shown = groups.reduce((n, g) => n + g.main.length + g.symbols.length, 0);
 
   return (
     <section className="space-y-3">
@@ -107,25 +204,64 @@ function FormulaList({
           placeholder="过滤 LaTeX / 章节…"
           className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-brand-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
         />
-        <span className="text-xs text-slate-400">
-          {filtered.length}/{paper.formulas.length}
+        <span className="whitespace-nowrap text-xs text-slate-400">
+          {shown} 项 · {paper.formulas.length} 处
         </span>
       </div>
 
-      <ul className="space-y-2">
-        {filtered.map((f) => (
-          <li key={f.id}>
-            <FormulaCard
-              formula={f}
-              hasResult={!!results[f.id]}
-              onOpen={() => onSelect(f.id)}
-            />
-          </li>
-        ))}
-      </ul>
+      <div className="space-y-4">
+        {groups.map((g) => (
+          <div key={g.key} className="space-y-2">
+            {/* 章节标题（按层级缩进） */}
+            <div
+              className="flex items-center gap-1 border-l-2 border-brand-400/60 pl-2 text-xs font-semibold text-slate-600 dark:text-slate-300"
+              style={{ marginLeft: g.depth * 10 }}
+              title={g.heading}
+            >
+              <span className="truncate">{g.heading}</span>
+              <span className="ml-1 font-normal text-slate-400">
+                {g.main.length + g.symbols.length}
+              </span>
+            </div>
 
-      {filtered.length === 0 && (
-        <p className="text-xs text-slate-400">未匹配到公式，尝试换个关键字。</p>
+            {/* 主公式：display + 复杂行内 */}
+            {g.main.length > 0 && (
+              <ul className="space-y-2" style={{ marginLeft: g.depth * 10 }}>
+                {g.main.map((e) => (
+                  <li key={e.formula.id}>
+                    <FormulaCard
+                      formula={e.formula}
+                      count={e.count}
+                      hasResult={!!results[e.formula.id]}
+                      onOpen={() => onSelect(e.formula.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* 符号与变量：弱化为小 chip，但同样可点开学习 */}
+            {g.symbols.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" style={{ marginLeft: g.depth * 10 }}>
+                {g.symbols.map((e) => (
+                  <SymbolChip
+                    key={e.formula.id}
+                    formula={e.formula}
+                    count={e.count}
+                    hasResult={!!results[e.formula.id]}
+                    onOpen={() => onSelect(e.formula.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {shown === 0 && (
+        <p className="text-xs text-slate-400">
+          {q ? '未匹配到公式，尝试换个关键字。' : '此页未抽到公式。'}
+        </p>
       )}
     </section>
   );
@@ -133,10 +269,12 @@ function FormulaList({
 
 function FormulaCard({
   formula,
+  count,
   hasResult,
   onOpen,
 }: {
   formula: Formula;
+  count: number;
   hasResult: boolean;
   onOpen: () => void;
 }) {
@@ -150,7 +288,14 @@ function FormulaCard({
       <div className="mb-1 flex items-center gap-2 text-[11px] text-slate-400">
         <span>#{formula.id}</span>
         <span>{formula.display ? 'block' : 'inline'}</span>
-        {formula.sectionPath && <span className="truncate">· {formula.sectionPath}</span>}
+        {count > 1 && (
+          <span
+            className="rounded bg-slate-100 px-1 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+            title={`本节出现 ${count} 处`}
+          >
+            ×{count}
+          </span>
+        )}
         {hasResult && (
           <span className="ml-auto rounded bg-brand-500/10 px-1.5 py-0.5 text-brand-600 dark:text-brand-300">
             已生成
@@ -170,6 +315,40 @@ function FormulaCard({
         </button>
       </div>
     </div>
+  );
+}
+
+/** 符号 / 短公式的紧凑展示：点击即可打开推导（对符号即"含义 + 小例子"） */
+function SymbolChip({
+  formula,
+  count,
+  hasResult,
+  onOpen,
+}: {
+  formula: Formula;
+  count: number;
+  hasResult: boolean;
+  onOpen: () => void;
+}) {
+  const html = useMemo(
+    () => renderLatexToHtml(formula.latex, false),
+    [formula.latex],
+  );
+
+  return (
+    <button
+      onClick={onOpen}
+      title={hasResult ? '查看该符号的解释' : '点击了解该符号含义'}
+      className={
+        'inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition ' +
+        (hasResult
+          ? 'border-brand-300 bg-brand-500/10 dark:border-brand-700'
+          : 'border-slate-200 bg-white hover:border-brand-400 dark:border-slate-800 dark:bg-slate-900')
+      }
+    >
+      <span className="pointer-events-none" dangerouslySetInnerHTML={{ __html: html }} />
+      {count > 1 && <span className="text-[10px] text-slate-400">×{count}</span>}
+    </button>
   );
 }
 

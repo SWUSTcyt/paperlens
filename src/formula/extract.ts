@@ -16,7 +16,14 @@ export interface RawFormula {
 export function extractLatexFromMathNode(node: Element): RawFormula | null {
   if (node.tagName.toLowerCase() !== 'math') return null;
 
-  const display = node.getAttribute('display') === 'block';
+  // display 判定：优先看 <math display="block">；
+  // 但 ar5iv/LaTeXML 常把 display 方程里的 <math> 也标成 display="inline"，
+  // 因此再根据祖先容器（方程块 / 方程组 / 公式表）推断，避免 display 公式被误判为行内。
+  const display =
+    node.getAttribute('display') === 'block' ||
+    !!node.closest?.(
+      '.ltx_equation, .ltx_equationgroup, .ltx_eqn_table, .ltx_eqnarray, .ltx_displaymath',
+    );
   const anchor = node.id || node.closest('[id]')?.id || undefined;
 
   // 1. alttext（LaTeXML / ar5iv 都会输出，内容就是 LaTeX）
