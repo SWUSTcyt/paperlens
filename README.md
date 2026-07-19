@@ -1,10 +1,11 @@
 # PaperLens
 
-一款专注 arXiv 的 Chrome 扩展：在打开论文页面（含 **`/pdf/`**）时一键生成**论文解读**、**公式逐步推导**，并**导出为 Markdown** 文件。
+一款面向论文精读的 Chrome 扩展：支持 arXiv 页面、在线/本地 PDF 与文件上传，一键生成**论文解读**、**公式逐步推导**，并**导出为 Markdown** 文件。
 
 ## 特性
 
-- **多来源抽取**：支持 arXiv 摘要页（`/abs`）、HTML 全文（`/html`）、ar5iv 镜像，以及 **arXiv PDF（`/pdf`）**。PDF 场景下原文仍显示在标签页、解析结果在侧边栏，**边看边读**。
+- **多来源抽取**：支持 arXiv 摘要页（`/abs`）、HTML 全文（`/html`）、ar5iv 镜像，以及 arXiv、任意在线和本地 `file://` PDF；也可直接选择或拖入 PDF 文件。PDF 场景下原文仍显示在标签页、解析结果在侧边栏，**边看边读**。
+- **PDF 本地解析**：pdf.js Worker 在扩展内解析文本层，支持单双栏阅读顺序、页眉页脚清理、断词/段落重建、标题/作者/参考文献识别和逐页进度；原始 PDF 二进制不写入浏览器缓存。
 - **论文解读**：结构化总结研究问题 / 方法 / 主要贡献 / 实验与结果 / 结论；长论文自动 Map-Reduce 压缩，支持简洁 / 详细两档粒度。
 - **公式逐步推导**：从定义开始逐步推导，符号拆解 + 关键运算解析 + 小例子三段式；点击「回跳原文」可在原页面高亮公式出处（PDF 暂不抽公式，请改用 HTML/ar5iv）。
 - **Markdown 导出**：一键保存为 `.md` 文件，含 YAML front-matter（适合 Obsidian / Typora），公式保留 `$$...$$` 语法。
@@ -36,6 +37,7 @@ pnpm install          # 安装依赖（会触发 wxt prepare）
 pnpm dev              # 开发模式，自动打开 Chrome 并加载扩展（HMR）
 pnpm build            # 生产构建，产物在 .output/chrome-mv3/
 pnpm compile          # 仅做 tsc 类型检查（不产出）
+pnpm test:pdf         # PDF 单元/功能回归
 pnpm zip              # 打 zip 包以上架 Chrome Web Store
 ```
 
@@ -45,13 +47,17 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 2. 打开 Chrome → `chrome://extensions`
 3. 右上角开启「开发者模式」
 4. 点击「加载已解压的扩展程序」，选择 `.output/chrome-mv3/` 目录
-5. 打开任一 arXiv 论文页，例如：
+5. 打开任一论文来源，例如：
    - 摘要页：<https://arxiv.org/abs/2310.06825>
    - HTML 全文：<https://arxiv.org/html/2310.06825>
    - ar5iv：<https://ar5iv.labs.arxiv.org/html/2310.06825>
    - PDF：<https://arxiv.org/pdf/2310.06825>（在 PDF 标签页点「解析本页 PDF」，可边看 PDF 边读解读）
+   - 其他在线 PDF：首次解析时仅申请当前站点权限
+   - 本地 `file://` PDF：需在扩展详情开启「允许访问文件网址」
 6. 点击工具栏的 PaperLens 图标 → SidePanel 打开
 7. 首次使用请先点底部「设置 / 配置 API Key」，填入至少一家 LLM 的 Key 并「测试连接」
+
+也可以在 SidePanel 中选择或拖入 PDF 文件，无需先在标签页打开。
 
 ### 典型使用流
 
@@ -118,12 +124,12 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 - [x] M6 打磨（错误处理、429/5xx 重试、空态、README）
 - [x] M7 沉淀 Cursor Skill：`browser-extension-dev`（已随仓库分享，见 [`.cursor/skills/`](./.cursor/skills/)）+ `git-push-flow`（个人全局，未入库）
 - [x] M8 arXiv PDF 解析（甜点场景）：在 `/pdf/` 页 fetch 字节 + pdf.js 本地解析 → 论文解读 / 导出打通（详见 [`docs/plan-pdf-extraction.md`](./docs/plan-pdf-extraction.md)）
+- [x] M9 PDF Phase B：任意在线/本地/上传摄入，单双栏版面与结构增强，逐页进度及浏览器关键路径验收
 
 ### 待办（欢迎 PR）
 
-- **PDF 能力扩展**（见 [`docs/plan-pdf-extraction.md`](./docs/plan-pdf-extraction.md)）：任意在线 PDF（按需申请权限）、本地 `file://` 与文件上传兜底、双栏/页眉页脚重建增强、PDF 公式的实验性识别与推导。
+- **PDF 公式能力（Phase C）**（见 [`docs/plan-pdf-extraction.md`](./docs/plan-pdf-extraction.md)）：实验性公式识别、LaTeX 还原与推导。
 
-- **图标**：当前未提供 PNG 图标，Chrome 会使用默认灰图标。替换方案：把 16/32/48/128 像素的 PNG 放到 `public/icon/`。
 - **KaTeX 字体瘦身**：默认打包了 Main/AMS/Caligraphic/Fraktur 等全部字形，可按需剔除仅保留 Main+AMS。
 - **多论文对比**：目前只解读"当前活动 Tab"，后续可以沉淀历史。
 
@@ -131,7 +137,8 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 
 - 所有 LLM API Key 仅存于 `chrome.storage.local`，只在扩展的 Service Worker 中使用，不随任何页面注入。
 - 没有任何遥测或云端同步，导出和解读均为本地操作。
-- 仅在你主动访问的 arXiv / ar5iv 页面生效（`host_permissions` 白名单内）。
+- arXiv / ar5iv 使用固定白名单；其他在线 PDF 只在点击解析时申请当前 origin 权限，本地 `file://` 访问由浏览器扩展详情开关控制。
+- 上传 PDF 仅在本机内存中解析，缓存只保存结构化结果和内容摘要键，不保存原始二进制。
 - 发往 LLM 的是论文的**结构化文本**（不含完整 PDF），且只在你显式点击「生成解读 / 生成推导 / 测试连接」时发送。
 
 ## 许可

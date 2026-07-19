@@ -1,13 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PaperContent, Section } from '../../src/extractors/types';
 import { requestExtractFromActiveTab } from '../../src/bridge/extractBridge';
-import { detectPdfUrl, extractPdfFromActiveTab } from '../../src/bridge/pdfSource';
+import {
+  detectPdfUrl,
+  extractPdfFromUrl,
+  openFileAccessSettings,
+  PdfSourceError,
+  type PdfSourceErrorCode,
+} from '../../src/bridge/pdfSource';
 import { detectKind } from '../../src/extractors/arxiv';
+import { extractPdf } from '../../src/pdf/extractPdf';
+import type { PdfExtractionProgress } from '../../src/pdf/progress';
+import { assertPdfBytes, buildUploadCacheKey } from '../../src/pdf/sourceUrl';
 import { loadPageCache, savePageCache } from '../../src/storage/cache';
 import { loadSettings, onSettingsChanged } from '../../src/storage/settings';
 import { SummaryTab, type SummaryResult } from './tabs/SummaryTab';
 import { DerivationTab, type DerivationResult } from './tabs/DerivationTab';
 import { ExportTab } from './tabs/ExportTab';
+import { PdfPicker } from './PdfPicker';
 
 type TabKey = 'summary' | 'derivation' | 'export';
 
@@ -15,6 +25,11 @@ interface PageState {
   kind: 'abs' | 'html' | 'ar5iv' | 'pdf' | 'unknown';
   url: string;
   title: string;
+}
+
+interface ExtractFailure {
+  message: string;
+  code?: PdfSourceErrorCode;
 }
 
 const TABS: Array<{ key: TabKey; label: string; hint: string }> = [
@@ -28,7 +43,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('summary');
   const [paper, setPaper] = useState<PaperContent | null>(null);
   const [extracting, setExtracting] = useState(false);
-  const [extractError, setExtractError] = useState<string | null>(null);
+  const [pdfProgress, setPdfProgress] = useState<PdfExtractionProgress | null>(null);
+  const [extractError, setExtractError] = useState<ExtractFailure | null>(null);
   const [summary, setSummary] = useState<SummaryResult | null>(null);
   const [derivations, setDerivations] = useState<Record<number, DerivationResult>>({});
   // 已完成"缓存恢复"的 URL：用于门控持久化，避免在恢复完成前把空状态写回缓存
@@ -137,20 +153,43 @@ export default function App() {
   const supported = page && page.kind !== 'unknown';
 
   async function handleExtract() {
+    if (page?.url.startsWith('pdf:')) return;
     setExtracting(true);
+    setPdfProgress(null);
     setExtractError(null);
     try {
       // PDF 来源：在 SidePanel 内 fetch 字节并本地解析；其余走 Content Script 抽取
       const data =
         page?.kind === 'pdf'
-          ? await extractPdfFromActiveTab()
+          ? await extractPdfFromUrl(page.url, page.title, { onProgress: setPdfProgress })
           : await requestExtractFromActiveTab();
       setPaper(data);
       // 重新抽取视为对当前页的一次刷新，清空旧的解读与推导
       setSummary(null);
       setDerivations({});
     } catch (err) {
-      setExtractError(err instanceof Error ? err.message : String(err));
+      setExtractError({
+        message: err instanceof Error ? err.message : String(err),
+        code: err instanceof PdfSourceError ? err.code : undefined,
+      });
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function handleFileUpload(file: File) {
+    setExtracting(true);
+    setPdfProgress(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      assertPdfBytes(buffer);
+      const cacheKey = await buildUploadCacheKey(file.name, file.size, buffer);
+      const data = await extractPdf(buffer, cacheKey, { onProgress: setPdfProgress });
+      await switchToPage({ kind: 'pdf', url: cacheKey, title: file.name });
+      setPaper(data);
+      setSummary(null);
+      setDerivations({});
+      setExtractError(null);
     } finally {
       setExtracting(false);
     }
@@ -182,16 +221,22 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto p-4">
         {!supported ? (
-          <UnsupportedHint />
+          <>
+            <UnsupportedHint />
+            <PdfPicker busy={extracting} progress={pdfProgress} onPick={handleFileUpload} />
+          </>
         ) : (
           <>
             <ExtractBar
               paper={paper}
               extracting={extracting}
               error={extractError}
+              progress={pdfProgress}
               isPdf={page?.kind === 'pdf'}
+              isUploaded={page?.url.startsWith('pdf:') ?? false}
               onExtract={handleExtract}
             />
+            <PdfPicker busy={extracting} progress={pdfProgress} onPick={handleFileUpload} />
             {activeTab === 'summary' && (
               <SummaryTab paper={paper} result={summary} onResultChange={setSummary} />
             )}
@@ -235,18 +280,26 @@ function ExtractBar({
   paper,
   extracting,
   error,
+  progress,
   isPdf,
+  isUploaded,
   onExtract,
 }: {
   paper: PaperContent | null;
   extracting: boolean;
-  error: string | null;
+  error: ExtractFailure | null;
+  progress: PdfExtractionProgress | null;
   isPdf: boolean;
+  isUploaded: boolean;
   onExtract: () => void;
 }) {
   // PDF 来源目前不抽公式，展示"页数 · 章节"，网页来源展示"公式 · 章节"
   const idleLabel = isPdf ? '解析本页 PDF' : '抽取本页';
-  const busyLabel = isPdf ? '解析中…' : '抽取中…';
+  const busyLabel = isPdf
+    ? progress
+      ? `解析中 ${progress.currentPage}/${progress.totalPages}`
+      : '解析中…'
+    : '抽取中…';
   const doneLabel = isPdf ? '重新解析' : '重新抽取';
   return (
     <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/40">
@@ -270,18 +323,37 @@ function ExtractBar({
             <>点击右侧按钮，从当前页抽取论文结构</>
           )}
         </div>
-        <button
-          className="rounded bg-brand-600 px-3 py-1 text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={onExtract}
-          disabled={extracting}
-        >
-          {extracting ? busyLabel : paper ? doneLabel : idleLabel}
-        </button>
+        {!isUploaded && (
+          <button
+            className="rounded bg-brand-600 px-3 py-1 text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onExtract}
+            disabled={extracting}
+          >
+            {extracting ? busyLabel : paper ? doneLabel : idleLabel}
+          </button>
+        )}
       </div>
       {error && (
-        <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          {error}
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          <span>{error.message}</span>
+          {error.code === 'file-access-disabled' && (
+            <button
+              type="button"
+              className="shrink-0 rounded bg-red-600 px-2 py-1 font-medium text-white hover:bg-red-700"
+              onClick={() => void openFileAccessSettings()}
+            >
+              打开扩展详情
+            </button>
+          )}
+        </div>
+      )}
+      {extracting && isPdf && !isUploaded && progress && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-slate-800">
+          <div
+            className="h-full bg-brand-500 transition-[width]"
+            style={{ width: `${Math.round((progress.currentPage / progress.totalPages) * 100)}%` }}
+          />
+        </div>
       )}
       {paper && paper.warnings.length > 0 && (
         <ul className="mt-2 list-inside list-disc text-xs text-amber-600 dark:text-amber-400">
@@ -311,8 +383,8 @@ function ApiKeyBanner() {
 function UnsupportedHint() {
   return (
     <div className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-      <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">当前页面不是 arXiv 论文</p>
-      <p>请在下列站点之一打开论文后再使用 PaperLens：</p>
+      <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">当前页面不是可识别的论文页面</p>
+      <p>可打开下列来源，或直接在下方上传 PDF：</p>
       <ul className="mt-2 list-inside list-disc space-y-1">
         <li>
           arXiv 摘要页：<code className="rounded bg-slate-100 px-1 dark:bg-slate-800">arxiv.org/abs/...</code>
@@ -324,8 +396,8 @@ function UnsupportedHint() {
           ar5iv 镜像：<code className="rounded bg-slate-100 px-1 dark:bg-slate-800">ar5iv.labs.arxiv.org/html/...</code>
         </li>
         <li>
-          arXiv PDF：<code className="rounded bg-slate-100 px-1 dark:bg-slate-800">arxiv.org/pdf/...</code>
-          （可边看 PDF 边解读）
+          在线 / 本地 PDF：<code className="rounded bg-slate-100 px-1 dark:bg-slate-800">https://.../paper.pdf</code>{' '}
+          或 <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">file://...</code>
         </li>
       </ul>
     </div>
@@ -345,14 +417,15 @@ async function refreshActiveTab(): Promise<PageState> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url ?? '';
   const title = tab?.title ?? '';
-  return { kind: classify(url), url, title };
+  return { kind: classify(url, title), url, title };
 }
 
 // 复用抽取器里的 detectKind，避免页面类型判定逻辑在两处漂移
-// PDF 优先判定（arXiv /pdf/），其次是 arXiv 网页三种，最后 unknown
-function classify(url: string): PageState['kind'] {
-  if (detectPdfUrl(url)) return 'pdf';
-  return detectKind(url) ?? 'unknown';
+// 已知 arXiv 网页优先，避免标题恰以 .pdf 结尾时误判；其余再识别 PDF
+function classify(url: string, title = ''): PageState['kind'] {
+  const arxivKind = detectKind(url);
+  if (arxivKind) return arxivKind;
+  return detectPdfUrl(url, title) ? 'pdf' : 'unknown';
 }
 
 function countSections(sections: Section[]): number {

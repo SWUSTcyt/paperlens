@@ -1,53 +1,78 @@
 // PDF 来源桥：识别「当前标签页是否为可解析的 PDF」并获取其字节
 //
-// 甜点场景（MVP）：arXiv 的 /pdf/ 链接。
-//   - host_permissions 已含 *://*.arxiv.org/*，SidePanel 可直接 fetch，无需新权限。
-//   - PDF 继续显示在标签页里，解析结果在侧边栏 → 天然并排阅读。
-// 后续可扩展到任意在线 PDF（按需申请 optional_host_permissions）与本地文件上传。
+// arXiv 复用常驻 host permission；其他在线 PDF 仅在用户点击解析时申请当前主机权限。
+// file:// 由 Chrome 的「允许访问文件网址」开关控制，关闭时给出可操作提示。
 
 import type { PaperContent } from '../extractors/types';
-import { extractPdf } from '../pdf/extractPdf';
+import { extractPdf, type ExtractPdfOptions } from '../pdf/extractPdf';
+import {
+  ensurePdfSourceAccess,
+  PdfSourceError,
+  type PdfAccessApi,
+  type PdfSourceErrorCode,
+} from '../pdf/sourceAccess';
+import {
+  classifyPdfUrl,
+  downloadPdfBytes,
+  permissionPatternForPdfUrl,
+} from '../pdf/sourceUrl';
 
-/** 判断一个 URL 是否为「当前可解析」的 PDF（MVP 仅放行 arXiv /pdf/） */
-export function detectPdfUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const isArxiv = u.hostname.endsWith('arxiv.org');
-    if (isArxiv && /^\/pdf\//.test(u.pathname)) return true;
-    // 兼容以 .pdf 结尾的 arXiv 链接
-    if (isArxiv && /\.pdf$/i.test(u.pathname)) return true;
-    return false;
-  } catch {
-    return false;
-  }
+export { PdfSourceError, type PdfSourceErrorCode } from '../pdf/sourceAccess';
+
+/** 判断一个 URL 是否为可解析的 PDF；标题可覆盖无扩展名的下载地址。 */
+export function detectPdfUrl(url: string, tabTitle = ''): boolean {
+  return classifyPdfUrl(url, tabTitle) !== 'none';
 }
+
+const chromePdfAccessApi: PdfAccessApi = {
+  isFileAccessAllowed: () =>
+    new Promise((resolve) => chrome.extension.isAllowedFileSchemeAccess(resolve)),
+  requestOrigin: (origin) =>
+    new Promise((resolve, reject) => {
+      chrome.permissions.request({ origins: [origin] }, (allowed) => {
+        const err = chrome.runtime.lastError;
+        if (err) reject(new Error(err.message));
+        else resolve(allowed);
+      });
+    }),
+};
 
 /**
  * 从当前活动标签页的 PDF 地址抓取字节并解析为 PaperContent。
  * 由 SidePanel 侧发起（拥有 arXiv 的 host 权限，绕过页面 CORS）。
  */
-export async function extractPdfFromActiveTab(): Promise<PaperContent> {
+export async function extractPdfFromActiveTab(
+  options: ExtractPdfOptions = {},
+): Promise<PaperContent> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const url = tab?.url ?? '';
-  if (!url || !detectPdfUrl(url)) {
-    throw new Error('当前标签页不是可解析的 PDF（目前支持 arXiv 的 /pdf/ 链接）。');
+  return extractPdfFromUrl(tab?.url ?? '', tab?.title ?? '', options);
+}
+
+/** 从已知标签 URL 解析；由点击处理器直接调用，确保权限请求保留用户手势。 */
+export async function extractPdfFromUrl(
+  url: string,
+  tabTitle = '',
+  options: ExtractPdfOptions = {},
+): Promise<PaperContent> {
+  const kind = classifyPdfUrl(url, tabTitle);
+  if (!url || kind === 'none') {
+    throw new PdfSourceError('当前标签页不是可识别的 PDF。', 'not-pdf');
   }
+
+  await ensurePdfSourceAccess(kind, permissionPatternForPdfUrl(url), chromePdfAccessApi);
 
   let buffer: ArrayBuffer;
   try {
-    const resp = await fetch(url, { credentials: 'omit' });
-    if (!resp.ok) {
-      throw new Error(`下载 PDF 失败：HTTP ${resp.status}`);
-    }
-    buffer = await resp.arrayBuffer();
+    buffer = await downloadPdfBytes(url);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`获取 PDF 失败：${msg}`);
   }
 
-  if (buffer.byteLength === 0) {
-    throw new Error('下载到的 PDF 为空。');
-  }
+  return extractPdf(buffer, url, options);
+}
 
-  return extractPdf(buffer, url);
+/** 打开当前扩展的详情页，供用户开启「允许访问文件网址」。 */
+export async function openFileAccessSettings(): Promise<void> {
+  await chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
 }

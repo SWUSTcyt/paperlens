@@ -28,12 +28,16 @@ export default defineConfig({
       '*://*.arxiv.org/*',
       '*://ar5iv.labs.arxiv.org/*',
       '*://ar5iv.org/*',
+      // Chrome 仍要求用户在扩展详情页手动开启「允许访问文件网址」
+      'file:///*',
       // LLM Providers（Service Worker 需要在此白名单内才能不受 CORS 限制地发请求）
       'https://dashscope.aliyuncs.com/*',
       'https://api.deepseek.com/*',
       'https://api.openai.com/*',
       'https://api.anthropic.com/*',
     ],
+    // 任意在线 PDF 只在用户点击解析时按当前主机申请，不产生常驻全网权限
+    optional_host_permissions: ['http://*/*', 'https://*/*'],
     // 点击扩展图标时，Service Worker 会将其切换为打开 SidePanel
     action: {
       default_title: 'PaperLens',

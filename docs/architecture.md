@@ -3,7 +3,7 @@
 > 目的：给任何接手者（含在 Codex/其他 IDE 中继续开发的自己）一份「项目当前是怎么运作的」权威参考。
 > 阅读顺序建议：本文件 → `docs/plan-pdf-extraction.md`（下一个大功能方案）→ `docs/dev-notes.md`（时间线与踩坑）。
 >
-> 最后更新：2026-07（M0–M8：含 arXiv `/pdf/` 甜点场景的本地 PDF 解析）。
+> 最后更新：2026-07（M0–M9：含 Phase B 任意在线、本地与上传 PDF）。
 
 ---
 
@@ -79,7 +79,12 @@ src/
     latexml.ts             /html + ar5iv（LaTeXML 生成的 HTML）抽取
   pdf/                      PDF 来源（arXiv /pdf/，字节 → PaperContent）
     loadPdfjs.ts           pdf.js 懒加载 + Worker 配置（?url 导入）
-    extractPdf.ts          版面重建（分栏/聚行/去页眉页脚/分段）+ 结构识别
+    extractPdf.ts          PDF 文档编排、逐页进度、结构失败降级
+    textLayout.ts          混合单双栏读序、聚行、页眉页脚与分段
+    structure.ts           标题/作者/章节/参考文献启发式
+    sourceUrl.ts           PDF URL、签名、下载与上传缓存键
+    sourceAccess.ts        在线 origin / file:// 最小权限流程
+    progress.ts            分页进度与主线程让出
   formula/
     extract.ts             从 <math> DOM 节点提取 LaTeX（含 display 推断）
     mathMarkdown.ts        Markdown 里 $...$ / $$...$$ ↔ KaTeX 渲染占位
@@ -92,7 +97,7 @@ src/
     sse.ts                 SSE 行迭代器
   bridge/
     extractBridge.ts       SidePanel→Content：requestExtractFromActiveTab / requestScrollToFormula
-    pdfSource.ts           SidePanel：detectPdfUrl + extractPdfFromActiveTab（fetch PDF 字节并解析）
+    pdfSource.ts           SidePanel：识别来源、申请最小权限、fetch PDF 字节并解析
     llmBridge.ts           SidePanel→Background：chatStream / chatOnce（含 abort 透传）
   pipelines/
     summarize.ts           解读流水线（长文 Map-Reduce、token 预算控制）
@@ -200,6 +205,8 @@ interface Formula {
 
 - `pnpm compile`：仅 tsc 类型检查（**每次改动后必跑**）。
 - `pnpm build`：产物到 `.output/chrome-mv3/`。
+- `pnpm test:pdf`：PDF 权限、来源、版面、结构和进度的 Node 单元/功能回归。
+- `pnpm test:phase-b:browser`：临时加载构建产物，用真实 PDF 回归 arXiv、上传、`file://` 和导出；`test:phase-b:permissions` 额外验证当前 origin 权限弹窗。
 - `pnpm dev`：HMR 开发。
 - 提交：Windows 下用 Git Bash（`D:\tools\Git\bin\bash.exe -lc '...'`），避免 PowerShell 对 `<>`/`&&`/heredoc 的解析问题；复杂 commit message 走临时文件 + `git commit -F`（见 `git-push-flow` skill 与 dev-notes）。
 - 远端：`github.com/SWUSTcyt/paperlens`，主分支 `main`。
@@ -210,5 +217,5 @@ interface Formula {
 
 - **ar5iv 的 `<math>` 会把块级公式也标成 `display="inline"`**：`formula/extract.ts` 已改为从祖先容器（`.ltx_equation` 等）推断 display，勿回退。
 - **KaTeX** 使用 `throwOnError: true`，渲染失败回退 `<code>`，避免坏公式污染整页。
-- **权限最小化**：`host_permissions` 仅含 arXiv + 四个 Provider 域名。arXiv `/pdf/` 复用现有权限；任意域名 PDF 用 `optional_host_permissions` 按需申请（Phase B）。
+- **权限最小化**：arXiv 与 Provider 使用固定 host permission；任意在线 PDF 通过 `optional_host_permissions` 只申请当前 origin；`file:///*` 仍需用户在扩展详情手动开启。
 - **chrome.storage.session** 有容量上限（约 10MB/键空间量级），缓存整篇 paper 可以，勿缓存原始二进制。

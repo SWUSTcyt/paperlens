@@ -1,6 +1,6 @@
 # 方案：本地 PDF 文本读取与解析
 
-> 状态：**Phase A（甜点场景：arXiv /pdf/）已实现**；Phase B/C 待续。
+> 状态：**Phase A、Phase B 已完成；Phase C 待续。**
 > 前置阅读：`docs/architecture.md`（尤其第 4 节数据模型、第 6 节扩展点）。
 > 目标读者：接手实现者（含未来的自己）。本文件力求「照着做即可落地」。
 
@@ -221,15 +221,25 @@ entrypoints/sidepanel/
 - [x] `src/bridge/pdfSource.ts`：`detectPdfUrl`（arXiv /pdf/）+ `extractPdfFromActiveTab`（fetch 字节，走现成 host 权限）。
 - [x] `App.tsx`：`classify` 识别 pdf、`handleExtract` 分支、`ExtractBar` 文案、`UnsupportedHint` 提示；`DerivationTab` PDF 空态。
 - [x] `pnpm compile` + `pnpm build` 通过（pdf 拆为独立懒加载 chunk）。
-- [ ] **待人工在浏览器验证**：加载 `.output/chrome-mv3/`，打开 `arxiv.org/pdf/xxxx` → 点「解析本页 PDF」→ 解读/导出可用（单栏/双栏各测一篇）。
+- [x] 浏览器验证：临时加载 `.output/chrome-mv3/`，真实解析 Attention（双栏）与 Adam（单栏），并验证 Markdown 导出预览。
 
 > 说明：本阶段只放行 **arXiv /pdf/**（Path 1 的甜点子集，权限现成）。任意在线 PDF（`optional_host_permissions` 按需申请）与本地 file:// / 上传兜底放到后续。
 
-### Phase B — 摄入面扩展 + 版面/结构增强
-- [ ] 摄入面扩展：任意在线 PDF（`optional_host_permissions` + 运行时 `chrome.permissions.request`）；本地 `file://`（引导开启"允许访问文件网址"）；文件选择/拖拽兜底（合成 key `pdf:<filename>:<size>:<hash>`）。
-- [ ] 双栏检测、页眉页脚去除、连字符与段落合并的鲁棒性提升（用问题 PDF 回归）。
-- [ ] 标题/作者/参考文献识别准确率提升；大 PDF 分页 `await` 让出主线程 + 进度提示。
-- [ ] 提交：`feat(pdf): 扩展摄入路径并增强版面重建`。
+### Phase B — 摄入面扩展 + 版面/结构增强 ✅ 已完成
+- [x] 摄入面扩展：任意在线 PDF（`optional_host_permissions` + 当前 origin 运行时申请）；本地 `file://`（声明 file host permission，并引导开启“允许访问文件网址”）；文件选择/拖拽兜底（key 为 `pdf:<filename>:<size>:<sha256>`）。
+- [x] 双栏检测、页眉页脚去除、连字符与段落合并的鲁棒性提升：通栏块与双栏正文按阅读带排序；页眉页脚按页面边缘与跨页频次清理；跨栏断段。
+- [x] 标题/作者/参考文献增强：多行作者与机构过滤；阿拉伯/罗马/附录/粗体标题；编号与作者-年份参考文献。
+- [x] 大 PDF 逐页 `await` 让出主线程，并在当前标签/上传两条路径显示页级进度。
+- [x] 自动验收：17 项 PDF 单元/功能测试、`pnpm compile`、`pnpm build` 通过。
+- [x] 浏览器验收：Edge 临时扩展覆盖 arXiv `/abs`/`/html`/`/pdf`、上传、`file://`、真实单栏/双栏 PDF、Markdown 导出；交互模式实际允许当前 origin 后，任意在线 PDF 解析通过。
+
+浏览器回归命令：`pnpm test:phase-b:browser`；需要复核权限弹窗时运行 `pnpm test:phase-b:permissions` 并在浏览器中选择允许或拒绝。
+
+#### Phase B 使用示例
+
+1. 打开任意 `https://.../paper.pdf`，点击“解析本页 PDF”，仅授权当前站点后边看边解读。
+2. 打开 `file://.../paper.pdf`；若提示无权限，进入扩展详情开启“允许访问文件网址”后重试。
+3. 在任意页面打开侧栏，把 PDF 拖入上传区；结果以内容摘要键缓存，原始 PDF 字节仅保留在本次解析内存中。
 
 ### Phase C — 公式（实验性）
 - [ ] `formulaHeuristic.ts` 候选识别；`Formula` 填 `page/confidence/formulaSupport='heuristic'`。
@@ -262,9 +272,6 @@ entrypoints/sidepanel/
 
 > 参考 `docs/architecture.md` 与本文件。**Phase A（arXiv /pdf/ 甜点场景）已完成**，核心代码在 `src/pdf/`（`loadPdfjs.ts` / `extractPdf.ts`）与 `src/bridge/pdfSource.ts`，接入点在 `entrypoints/sidepanel/App.tsx`。
 >
-> 建议下一步优先级：
-> 1. **先人工在浏览器验证 Phase A**（加载 `.output/chrome-mv3/`，开 `arxiv.org/pdf/xxxx` 解析），确认 pdf.js worker、fetch、解读全链路真机可用；根据真实效果回填 `extractPdf.ts` 的版面/结构参数。
-> 2. **Phase B**：扩展摄入路径（任意在线 PDF 用 `optional_host_permissions`；本地 file://；上传兜底）+ 增强双栏/页眉页脚/分段。
-> 3. **Phase C**：公式启发式（`formulaHeuristic.ts`）+ derive prompt 变体 + `DerivationTab` 实验性标注。
+> Phase A、Phase B 已完成。后续若启动 Phase C，应单独拆分公式启发式、derive prompt 变体与 `DerivationTab` 实验性标注，不与本阶段混做。
 >
 > 全程：数据模型只加可选字段，保证 arXiv 路径零回归；每步 `pnpm compile`/`pnpm build`；遵循仓库规则（中文注释、UTF-8、async/await、完善错误处理，不动无关既有逻辑）。

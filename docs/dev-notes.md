@@ -25,6 +25,15 @@
 - **数据模型**：`types.ts` 只加**可选**字段（`source`/`formulaSupport`/`pageCount` + `Formula.page`/`confidence`），arXiv 路径零回归。
 - **MVP 边界**：`formulaSupport='none'`，公式列表为空；公式识别（PDF 内无 LaTeX，需启发式 + AI 还原）留待 Phase C。
 
+## M9 PDF Phase B
+
+- **按需权限**：在线 PDF 只从点击事件直接请求当前 origin，避免异步查询打断 Chrome 的用户手势；`file:///*` 必须声明 host match，实际访问仍由扩展详情页开关控制。
+- **上传隐私**：缓存键使用文件名、大小与 SHA-256 摘要；`ArrayBuffer` 只进入 pdf.js，不写入 `chrome.storage.session`。
+- **版面拆分**：纯算法移到 `textLayout.ts` / `structure.ts`，用合成坐标覆盖通栏标题 + 双栏正文、边缘重复文本、跨栏断段、多类标题和参考文献。
+- **大文件体验**：每页完成后报告进度并 `setTimeout(0)` 让出渲染；loading task 在 `finally` 中销毁。
+- **真实样本回归**：Attention PDF 首页把 8 位作者和 Unicode 脚注符号排在同一文本行；作者解析需按 `¹²³⁴⁵⁶⁷⁸⁹∗*†‡` 拆分，不能只按逗号或换行判断。该缺陷先由浏览器冒烟发现，再补 Node 回归测试。
+- **验收**：17 项 Node 测试覆盖权限/下载正常与异常路径及版面结构；Edge 冒烟覆盖 arXiv 三类 URL、Attention 双栏、Adam 单栏、上传、`file://`、Markdown 导出，并实际完成任意在线 PDF 当前 origin 权限允许与解析。
+
 ## M0 环境搭建
 
 ### 关键选型
