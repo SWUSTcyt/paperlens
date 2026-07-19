@@ -1,10 +1,10 @@
-// PDF 字节 → PaperContent 抽取管线（MVP：文本 + 章节结构，暂不抽公式）
+// PDF 字节 → PaperContent 抽取管线（文本/章节结构 + 实验性公式候选）
 //
 // 设计原则：
 // 1. 归一到与 arXiv 抽取器一致的 PaperContent，使下游 Summary / Export 对来源透明。
 // 2. 健壮性优先：任何一步失败都降级为"整篇纯文本"，并在 warnings 里如实告知，
 //    保证「论文解读」在结构识别不理想时仍可用。
-// 3. MVP 阶段 formulaSupport = 'none'，公式列表为空（公式识别是后续 Phase C）。
+// 3. 公式只做启发式候选；质量不足或识别异常时保持 formulaSupport = 'none'。
 //
 // 处理流程：每页取带坐标的文本片段 → 分栏 → 聚行 → 去页眉页脚 → 去连字符/分段
 //          → 识别标题/摘要/章节/参考文献 → 组装 PaperContent。
@@ -16,6 +16,11 @@ import {
   type Section,
 } from '../extractors/types';
 import { loadPdfjs } from './loadPdfjs';
+import {
+  assignFormulaIdsToSections,
+  detectPdfFormulaCandidates,
+  isMathFontName,
+} from './formulaHeuristic';
 import { reportPdfPageProgress, type PdfProgressOptions } from './progress';
 import { detectHeading, parseAuthorLines, parseReferences } from './structure';
 import {
@@ -34,6 +39,10 @@ interface PdfTextItem {
   width: number;
   height: number;
   fontName: string;
+}
+
+interface PdfTextStyle {
+  fontFamily?: string;
 }
 
 /**
@@ -67,7 +76,8 @@ export async function extractPdf(
         const page = await doc.getPage(p);
         const viewport = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
-        const items = normalizeItems(content.items as unknown as PdfTextItem[]);
+        const styles = (content as unknown as { styles?: Record<string, PdfTextStyle> }).styles;
+        const items = normalizeItems(content.items as unknown as PdfTextItem[], styles);
         if (items.length === 0) continue;
         const lines = buildPageLines(items, viewport.width, viewport.height, p);
         allLines.push(...lines);
@@ -123,6 +133,20 @@ export async function extractPdf(
       paper.warnings.push('未能识别章节结构，已退化为整篇纯文本（解读仍可用，但结构可能不准）。');
     }
 
+    // 7. 实验性公式候选：失败或质量不足都回到 none，不影响正文与解读。
+    try {
+      const formulaResult = detectPdfFormulaCandidates(bodyLines, bodySize, detectHeading);
+      paper.formulas = formulaResult.formulas;
+      paper.formulaSupport = formulaResult.formulaSupport;
+      if (formulaResult.formulaSupport === 'heuristic') {
+        assignFormulaIdsToSections(paper.sections, paper.formulas);
+      }
+    } catch (err) {
+      paper.formulas = [];
+      paper.formulaSupport = 'none';
+      paper.warnings.push(`公式候选识别失败，已关闭实验性公式功能：${formatError(err)}`);
+    }
+
     return paper;
   } finally {
     try {
@@ -138,7 +162,10 @@ export async function extractPdf(
 /* ------------------------------------------------------------------ */
 
 /** 归一 pdf.js 文本片段：过滤空串，换算坐标与字号 */
-function normalizeItems(items: PdfTextItem[]): RawItem[] {
+function normalizeItems(
+  items: PdfTextItem[],
+  styles: Record<string, PdfTextStyle> = {},
+): RawItem[] {
   const out: RawItem[] = [];
   for (const it of items) {
     if (typeof it.str !== 'string' || it.str.trim() === '') continue;
@@ -147,7 +174,16 @@ function normalizeItems(items: PdfTextItem[]): RawItem[] {
     const y = t[5] ?? 0;
     // 字号优先用 height；缺失时由变换矩阵推导
     const size = it.height && it.height > 0 ? it.height : Math.hypot(t[1] ?? 0, t[3] ?? 0) || 10;
-    out.push({ str: it.str, x, y, w: it.width ?? 0, size, font: it.fontName ?? '' });
+    const font = styles[it.fontName]?.fontFamily || it.fontName || '';
+    out.push({
+      str: it.str,
+      x,
+      y,
+      w: it.width ?? 0,
+      size,
+      font,
+      mathFont: isMathFontName(font),
+    });
   }
   return out;
 }

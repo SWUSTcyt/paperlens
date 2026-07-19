@@ -7,7 +7,7 @@
 - **多来源抽取**：支持 arXiv 摘要页（`/abs`）、HTML 全文（`/html`）、ar5iv 镜像，以及 arXiv、任意在线和本地 `file://` PDF；也可直接选择或拖入 PDF 文件。PDF 场景下原文仍显示在标签页、解析结果在侧边栏，**边看边读**。
 - **PDF 本地解析**：pdf.js Worker 在扩展内解析文本层，支持单双栏阅读顺序、页眉页脚清理、断词/段落重建、标题/作者/参考文献识别和逐页进度；原始 PDF 二进制不写入浏览器缓存。
 - **论文解读**：结构化总结研究问题 / 方法 / 主要贡献 / 实验与结果 / 结论；长论文自动 Map-Reduce 压缩，支持简洁 / 详细两档粒度。
-- **公式逐步推导**：从定义开始逐步推导，符号拆解 + 关键运算解析 + 小例子三段式；点击「回跳原文」可在原页面高亮公式出处（PDF 暂不抽公式，请改用 HTML/ar5iv）。
+- **公式逐步推导**：网页真 LaTeX 支持回跳原文；PDF 会实验性识别疑似公式，由 AI 先还原 LaTeX 再推导，并以页码定位。PDF 结果会显著标注“AI 识别，实验性”，需对照原文。
 - **Markdown 导出**：一键保存为 `.md` 文件，含 YAML front-matter（适合 Obsidian / Typora），公式保留 `$$...$$` 语法。
 - **BYOK（Bring Your Own Key）**：支持 **Qwen（DashScope 兼容模式）/ DeepSeek / OpenAI / Anthropic** 四家 LLM，API Key 仅存本地；支持为"解读 / 推导"分别绑定不同模型（例如推导用 `deepseek-reasoner`）。
 - **流式渲染**：所有 LLM 调用走 SSE 流式，SidePanel 边生成边显示。
@@ -38,6 +38,7 @@ pnpm dev              # 开发模式，自动打开 Chrome 并加载扩展（HMR
 pnpm build            # 生产构建，产物在 .output/chrome-mv3/
 pnpm compile          # 仅做 tsc 类型检查（不产出）
 pnpm test:pdf         # PDF 单元/功能回归
+pnpm test:phase-c:browser # 真实 PDF + 扩展 UI 冒烟（需本机 Chrome/Edge）
 pnpm zip              # 打 zip 包以上架 Chrome Web Store
 ```
 
@@ -64,7 +65,7 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 1. 在 arXiv 论文页打开 PaperLens SidePanel
 2. 点顶部「抽取本页」—— 几秒内完成 DOM → `PaperContent` 抽取（标题、作者、章节、公式、参考文献）
 3. 「论文解读」Tab → 选择粒度 → 点「生成解读」
-4. 「公式推导」Tab → 从列表中选中任意公式 → 点「生成推导」，必要时用「回跳原文」按钮在页面定位
+4. 「公式推导」Tab → 从列表中选中任意公式 → 点「生成推导」；网页公式可回跳原文，PDF 候选按“第 N 页”定位
 5. 「导出 Markdown」Tab → 选「导出 .md（选择位置）」或「直接保存到下载目录」
 
 ## 目录结构
@@ -125,10 +126,11 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 - [x] M7 沉淀 Cursor Skill：`browser-extension-dev`（已随仓库分享，见 [`.cursor/skills/`](./.cursor/skills/)）+ `git-push-flow`（个人全局，未入库）
 - [x] M8 arXiv PDF 解析（甜点场景）：在 `/pdf/` 页 fetch 字节 + pdf.js 本地解析 → 论文解读 / 导出打通（详见 [`docs/plan-pdf-extraction.md`](./docs/plan-pdf-extraction.md)）
 - [x] M9 PDF Phase B：任意在线/本地/上传摄入，单双栏版面与结构增强，逐页进度及浏览器关键路径验收
+- [x] M10 PDF Phase C：疑似公式候选、AI 先还原再推导、实验性标识与页码定位
 
 ### 待办（欢迎 PR）
 
-- **PDF 公式能力（Phase C）**（见 [`docs/plan-pdf-extraction.md`](./docs/plan-pdf-extraction.md)）：实验性公式识别、LaTeX 还原与推导。
+- **PDF 公式质量调优**：扩充代表论文样本，持续校准候选阈值与不同模型的 LaTeX 还原质量。
 
 - **KaTeX 字体瘦身**：默认打包了 Main/AMS/Caligraphic/Fraktur 等全部字形，可按需剔除仅保留 Main+AMS。
 - **多论文对比**：目前只解读"当前活动 Tab"，后续可以沉淀历史。

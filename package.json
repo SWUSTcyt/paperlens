@@ -15,6 +15,7 @@
     "test:pdf": "node --experimental-strip-types --test tests/pdf*.test.mjs",
     "test:phase-b:browser": "node tests/phaseB.browser-smoke.mjs",
     "test:phase-b:permissions": "node tests/phaseB.browser-smoke.mjs --interactive-permissions",
+    "test:phase-c:browser": "node tests/phaseB.browser-smoke.mjs --phase-c",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

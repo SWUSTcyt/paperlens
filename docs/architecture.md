@@ -3,7 +3,7 @@
 > 目的：给任何接手者（含在 Codex/其他 IDE 中继续开发的自己）一份「项目当前是怎么运作的」权威参考。
 > 阅读顺序建议：本文件 → `docs/plan-pdf-extraction.md`（下一个大功能方案）→ `docs/dev-notes.md`（时间线与踩坑）。
 >
-> 最后更新：2026-07（M0–M9：含 Phase B 任意在线、本地与上传 PDF）。
+> 最后更新：2026-07（M0–M10：含 Phase C PDF 实验性公式识别与推导）。
 
 ---
 
@@ -12,7 +12,7 @@
 PaperLens 是一个 Chrome Manifest V3 扩展，在 **arXiv 论文页**（`/abs`、`/html`、`ar5iv` 镜像，以及 **`/pdf/`**）上：
 
 1. 把页面 DOM（或 PDF 字节）抽取成统一的 `PaperContent` 结构；
-2. 走 BYOK 的 LLM（Qwen / DeepSeek / OpenAI / Anthropic）生成 **论文解读** 与 **公式逐步推导**；
+2. 走 BYOK 的 LLM（Qwen / DeepSeek / OpenAI / Anthropic）生成 **论文解读** 与 **公式逐步推导**；PDF 疑似公式会先还原 LaTeX，并显著标记为实验性；
 3. 一键 **导出 Markdown**（含 `$$...$$` 公式与 YAML front-matter）。
 
 关键设计原则：**抽取来源对下游透明**——所有 extractor 归一到 `PaperContent`，Summary / Derivation / Export 三条链路不关心数据来自 DOM 还是 PDF。
@@ -85,6 +85,7 @@ src/
     sourceUrl.ts           PDF URL、签名、下载与上传缓存键
     sourceAccess.ts        在线 origin / file:// 最小权限流程
     progress.ts            分页进度与主线程让出
+    formulaHeuristic.ts    数学字体/Unicode/居中编号公式候选、质量门禁与章节关联
   formula/
     extract.ts             从 <math> DOM 节点提取 LaTeX（含 display 推断）
     mathMarkdown.ts        Markdown 里 $...$ / $$...$$ ↔ KaTeX 渲染占位
@@ -152,6 +153,8 @@ interface Formula {
   sectionPath?: string;   // "A > B"，给 LLM 语境
   context?: string;       // 公式上文若干字
   anchor?: string;        // data-pl-fid，用于回跳
+  page?: number;          // PDF 页码；网页来源为空
+  confidence?: number;    // PDF 候选置信度 0–1；网页来源为空
 }
 ```
 
@@ -175,7 +178,7 @@ interface Formula {
 
 ### 5.2 生成解读 / 推导（LLM）
 
-1. Tab 组件调用 `pipelines/summarize.ts` 或 `derive.ts`。
+1. Tab 组件调用 `pipelines/summarize.ts` 或 `derive.ts`；`formulaSupport='heuristic'` 时，derive 选择“先还原原始 PDF 文本为 LaTeX，再推导”的独立 prompt，网页公式仍用原模板。
 2. 流水线用 `llmBridge.chatStream/chatOnce` 打开一条到 Service Worker 的 Port。
 3. `bgHandler.ts` 按 `settings` 选定 Provider + 模型，调 `providers/*` → `fetchWithRetry` → SSE 逐块流回。
 4. Tab 边收边渲染（`MarkdownView` + KaTeX）。用户可中途取消（abort 透传到 fetch）。
@@ -207,6 +210,7 @@ interface Formula {
 - `pnpm build`：产物到 `.output/chrome-mv3/`。
 - `pnpm test:pdf`：PDF 权限、来源、版面、结构和进度的 Node 单元/功能回归。
 - `pnpm test:phase-b:browser`：临时加载构建产物，用真实 PDF 回归 arXiv、上传、`file://` 和导出；`test:phase-b:permissions` 额外验证当前 origin 权限弹窗。
+- `pnpm test:phase-c:browser`：在 Phase B 来源回归之上，验证真实 PDF 候选元数据/章节关联、实验性 UI、页码定位、网页真 LaTeX 隔离，以及浏览器内流式 prompt 链路。
 - `pnpm dev`：HMR 开发。
 - 提交：Windows 下用 Git Bash（`D:\tools\Git\bin\bash.exe -lc '...'`），避免 PowerShell 对 `<>`/`&&`/heredoc 的解析问题；复杂 commit message 走临时文件 + `git commit -F`（见 `git-push-flow` skill 与 dev-notes）。
 - 远端：`github.com/SWUSTcyt/paperlens`，主分支 `main`。
@@ -219,3 +223,4 @@ interface Formula {
 - **KaTeX** 使用 `throwOnError: true`，渲染失败回退 `<code>`，避免坏公式污染整页。
 - **权限最小化**：arXiv 与 Provider 使用固定 host permission；任意在线 PDF 通过 `optional_host_permissions` 只申请当前 origin；`file:///*` 仍需用户在扩展详情手动开启。
 - **chrome.storage.session** 有容量上限（约 10MB/键空间量级），缓存整篇 paper 可以，勿缓存原始二进制。
+- **PDF 公式不是 LaTeX 源码**：`Formula.latex` 在 heuristic 模式下保存的是原始文本；UI/导出必须按原文展示，只有 LLM prompt 可以尝试还原。候选不足时保持 `formulaSupport='none'`。

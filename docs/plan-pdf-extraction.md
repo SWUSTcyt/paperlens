@@ -1,6 +1,6 @@
 # 方案：本地 PDF 文本读取与解析
 
-> 状态：**Phase A、Phase B 已完成；Phase C 待续。**
+> 状态：**Phase A、Phase B 已完成；Phase C 功能与工程验收已完成，真实 Provider 教学质量待带 Key 人工评估。**
 > 前置阅读：`docs/architecture.md`（尤其第 4 节数据模型、第 6 节扩展点）。
 > 目标读者：接手实现者（含未来的自己）。本文件力求「照着做即可落地」。
 
@@ -175,9 +175,9 @@ entrypoints/sidepanel/
 
 ---
 
-## 8. 公式启发式（formulaHeuristic.ts，Phase C）
+## 8. 公式启发式（formulaHeuristic.ts，Phase C）✅ 已实现
 
-> Phase A 已落地降级开关：`formulaSupport='none'`，`DerivationTab` 对 PDF 显示空态并引导去 HTML/ar5iv。以下为 Phase C 方案。
+> Phase A 的 `formulaSupport='none'` 仍是质量降级路径；只有可靠候选存在时才切换为 `heuristic`。
 
 1. **候选识别**：
    - block/行中数学字体占比高（`fontName` 含 `CMMI`/`CMSY`/`CMEX`/`MSAM`/`MSBM`/`STIX`/`Math`/`Symbol`）；
@@ -189,6 +189,8 @@ entrypoints/sidepanel/
    - `page`：所在页；`context`：邻近正文；`sectionPath`：归属章节。
    - `formulaSupport = 'heuristic'`。
 3. **推导时**：`pipelines/derive.ts` 感知 `formulaSupport==='heuristic'`，改用「先还原 LaTeX 再推导」的 prompt 变体；UI 显著标注「AI 识别，可能不准」。
+
+实现补充：候选会排除页边缘、参考文献区、短噪声与长普通正文；最低分和单候选质量门禁不满足时返回空数组并保持 `none`。heuristic 原文在 UI/Markdown 中以纯文本展示，避免伪装成真实 LaTeX。
 
 ---
 
@@ -208,7 +210,7 @@ entrypoints/sidepanel/
 1. **任意在线 PDF**：`optional_host_permissions` + 运行时 `chrome.permissions.request`，用户点「解析本页 PDF」时再申请该域名。
 2. **本地 `file://`**：引导开启扩展详情页「允许访问文件网址」；开启后同样 fetch `tab.url`。
 3. **上传/拖拽兜底（Path 3）**：`<input type="file">` + 拖拽；合成缓存 key `pdf:<filename>:<size>:<hash>`；原始 `ArrayBuffer` 只留内存，不进 `chrome.storage`。
-4. **回跳降级（Phase C）**：有公式时用「第 N 页」代替 `SCROLL_TO_FORMULA`。
+4. **回跳降级（Phase C）**：有公式时用「第 N 页」代替 `SCROLL_TO_FORMULA`。✅
 
 ---
 
@@ -241,11 +243,17 @@ entrypoints/sidepanel/
 2. 打开 `file://.../paper.pdf`；若提示无权限，进入扩展详情开启“允许访问文件网址”后重试。
 3. 在任意页面打开侧栏，把 PDF 拖入上传区；结果以内容摘要键缓存，原始 PDF 字节仅保留在本次解析内存中。
 
-### Phase C — 公式（实验性）
-- [ ] `formulaHeuristic.ts` 候选识别；`Formula` 填 `page/confidence/formulaSupport='heuristic'`。
-- [ ] `derive.ts` 增加「PDF 公式先还原 LaTeX 再推导」的 prompt 变体（`prompts/derivation.ts`）。
-- [ ] `DerivationTab` 对 heuristic 来源加「AI 识别，实验性」标注 + 回跳降级为页码。
-- [ ] 提交：`feat(pdf): 实验性公式识别与推导`。
+### Phase C — 公式（实验性）✅ 工程验收完成
+- [x] `formulaHeuristic.ts` 候选识别；`Formula` 填 `page/confidence/context/sectionPath`，可靠候选使 `formulaSupport='heuristic'`，质量不足保持 `none`。
+- [x] `derive.ts` 增加「PDF 公式先还原 LaTeX 再推导」的 prompt 变体（`prompts/derivation.ts`），网页真 LaTeX 路径保持原模板。
+- [x] `DerivationTab` 对 heuristic 来源加「AI 识别，实验性」标注 + 回跳降级为页码；原始 PDF 文本不按真 LaTeX 渲染。
+- [x] Markdown 导出区分网页 LaTeX 与 PDF 原始公式文本，避免输出无效数学块。
+- [x] 自动验收：25 项 PDF 单元/功能测试、`pnpm compile`、`pnpm build` 通过。
+- [x] 浏览器验收：真实 Attention PDF 识别 3 条候选并验证页码/置信度/上下文/章节关联；arXiv HTML 真 LaTeX UI 不受影响；模拟 LLM Port 跑通“先还原”prompt 与流式结果链。
+- [ ] 真实 Provider 教学质量：临时 profile 无 API Key，需用户配置 Key 后人工评估还原准确性与推导质量。
+- [ ] 提交：`feat(pdf): 实验性公式识别与推导`（未经用户明确要求不执行）。
+
+浏览器回归命令：`pnpm test:phase-c:browser`。
 
 > 每个 Phase 结束都要 `pnpm compile` + `pnpm build` 通过再提交。
 
@@ -272,6 +280,6 @@ entrypoints/sidepanel/
 
 > 参考 `docs/architecture.md` 与本文件。**Phase A（arXiv /pdf/ 甜点场景）已完成**，核心代码在 `src/pdf/`（`loadPdfjs.ts` / `extractPdf.ts`）与 `src/bridge/pdfSource.ts`，接入点在 `entrypoints/sidepanel/App.tsx`。
 >
-> Phase A、Phase B 已完成。后续若启动 Phase C，应单独拆分公式启发式、derive prompt 变体与 `DerivationTab` 实验性标注，不与本阶段混做。
+> Phase A、Phase B、Phase C 已完成实现。Phase C 仍是实验性能力，后续只做样本扩充、阈值校准与真实模型质量评估，不应放宽提示或把 PDF 原文宣称为真实 LaTeX。
 >
 > 全程：数据模型只加可选字段，保证 arXiv 路径零回归；每步 `pnpm compile`/`pnpm build`；遵循仓库规则（中文注释、UTF-8、async/await、完善错误处理，不动无关既有逻辑）。

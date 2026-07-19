@@ -20,6 +20,15 @@ const SYSTEM_PROMPT = `你是 PaperLens 的数学/公式教学助手。
 6. 「小例子」给出具体数值，演示一轮完整计算，帮助读者"摸出数字"。
 7. 若公式本身是定义式、不存在"推导"：把「逐步推导」改写为"如何从朴素形式过渡到本式"，并在末尾强调它是定义。`;
 
+const PDF_HEURISTIC_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+PDF 实验性公式规则：
+1. 用户提供的是 PDF 文本层中的疑似公式原文，不是真实 LaTeX；必须先还原为最可能的规范 LaTeX，再开始解释和推导。
+2. 在「公式还原」中同时列出原始文本和还原后的 LaTeX，并说明编号、断字或乱码是如何处理的。
+3. 若存在歧义或信息缺失，必须显式写出不确定点和采用的保守解释；不得把猜测描述成论文原式。
+4. 行尾形如 (3) 的内容通常是公式编号，不应还原成公式的一部分。
+5. 后续四节只基于已经声明的还原结果推导；无法可靠还原时应停止推导，并建议用户对照原 PDF。`;
+
 export function buildDerivationSystem(): string {
   return SYSTEM_PROMPT;
 }
@@ -27,6 +36,32 @@ export function buildDerivationSystem(): string {
 export interface BuildDerivationUserOptions {
   /** 可选：公式上下文文本（附近段落） */
   context?: string;
+}
+
+export interface BuiltDerivationPrompt {
+  system: string;
+  user: string;
+  heuristic: boolean;
+}
+
+/** 按公式来源选择 prompt；网页真 LaTeX 继续走原模板。 */
+export function buildDerivationPrompt(
+  paper: PaperContent,
+  formula: Formula,
+  opts: BuildDerivationUserOptions = {},
+): BuiltDerivationPrompt {
+  if (paper.formulaSupport === 'heuristic') {
+    return {
+      system: PDF_HEURISTIC_SYSTEM_PROMPT,
+      user: buildPdfHeuristicDerivationUser(paper, formula, opts),
+      heuristic: true,
+    };
+  }
+  return {
+    system: buildDerivationSystem(),
+    user: buildDerivationUser(paper, formula, opts),
+    heuristic: false,
+  };
 }
 
 export function buildDerivationUser(
@@ -56,6 +91,42 @@ export function buildDerivationUser(
   lines.push('# 任务');
   lines.push(
     '请严格按 System 指示的五段式 Markdown 输出推导。确保读者即使没看原文，也能从你的讲解独立把公式理解+复现一遍。',
+  );
+  return lines.join('\n');
+}
+
+function buildPdfHeuristicDerivationUser(
+  paper: PaperContent,
+  formula: Formula,
+  opts: BuildDerivationUserOptions,
+): string {
+  const lines: string[] = [];
+  lines.push('# 论文信息');
+  if (paper.title) lines.push(`- 标题：${paper.title}`);
+  if (paper.categories.length) lines.push(`- 分类：${paper.categories.join(', ')}`);
+  lines.push('');
+  lines.push('# 疑似公式位置');
+  lines.push(`- 编号：${formula.id}`);
+  if (formula.sectionPath) lines.push(`- 章节：${formula.sectionPath}`);
+  if (formula.page) lines.push(`- 页码：第 ${formula.page} 页`);
+  if (formula.confidence != null) {
+    lines.push(`- 启发式置信度：${Math.round(formula.confidence * 100)}%`);
+  }
+  lines.push(`- 形式：${formula.display ? '疑似块级' : '疑似行内'}`);
+  lines.push('');
+  lines.push('# 原始 PDF 公式文本');
+  lines.push('```text');
+  lines.push(formula.latex);
+  lines.push('```');
+  if (opts.context && opts.context.trim()) {
+    lines.push('');
+    lines.push('# 上下文（疑似公式附近的正文）');
+    lines.push(opts.context.trim());
+  }
+  lines.push('');
+  lines.push('# 任务');
+  lines.push(
+    '先审查原始文本并还原最可能的 LaTeX，再严格按 System 指示的五段式 Markdown 输出。若无法可靠还原，请明确停止，不要编造推导。',
   );
   return lines.join('\n');
 }

@@ -7,6 +7,8 @@ export interface RawItem {
   w: number;
   size: number;
   font: string;
+  /** 该片段是否使用明显的数学字体族。 */
+  mathFont?: boolean;
 }
 
 export interface LayoutLine {
@@ -20,6 +22,8 @@ export interface LayoutLine {
   endX: number;
   size: number;
   font: string;
+  /** 本行按字符数加权的数学字体占比，供 Phase C 候选识别使用。 */
+  mathFontRatio?: number;
   text: string;
 }
 
@@ -154,8 +158,19 @@ function assembleLine(
     endX: Math.max(...group.map((item) => item.x + item.w)),
     size: median(group.map((item) => item.size)),
     font: mostCommon(group.map((item) => item.font)),
+    mathFontRatio: weightedMathFontRatio(group),
     text: text.replace(/\s+/g, ' ').trim(),
   };
+}
+
+function weightedMathFontRatio(items: RawItem[]): number {
+  const total = items.reduce((sum, item) => sum + Math.max(1, item.str.trim().length), 0);
+  if (total === 0) return 0;
+  const math = items.reduce(
+    (sum, item) => sum + (item.mathFont ? Math.max(1, item.str.trim().length) : 0),
+    0,
+  );
+  return math / total;
 }
 
 /** 删除跨页重复的边缘短文本、页码和 arXiv 水印。 */

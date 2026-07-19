@@ -36,7 +36,7 @@ export function DerivationTab({ paper, results, onResultsChange }: Props) {
     let desc: string;
     if (paper.source === 'pdf') {
       desc =
-        'PDF 来源暂不支持公式抽取（PDF 内没有 LaTeX 源码，公式识别为后续实验功能）。若需公式逐步推导，请打开该论文的 arXiv HTML 或 ar5iv 版本后再抽取。';
+        '未识别到足够可靠的 PDF 公式候选，实验性公式功能已自动关闭。论文解读与导出不受影响；若需公式推导，请改用 arXiv HTML 或 ar5iv 的真实 LaTeX。';
     } else if (paper.kind === 'abs') {
       desc = '当前是摘要页（/abs/），不含 <math> 公式。请打开论文的 HTML 或 ar5iv 版本后再抽取。';
     } else {
@@ -196,12 +196,13 @@ function FormulaList({
 
   return (
     <section className="space-y-3">
+      {paper.formulaSupport === 'heuristic' && <PdfFormulaExperimentalNotice />}
       <div className="flex items-center gap-2">
         <input
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="过滤 LaTeX / 章节…"
+          placeholder={paper.formulaSupport === 'heuristic' ? '过滤公式文本 / 章节…' : '过滤 LaTeX / 章节…'}
           className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-brand-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
         />
         <span className="whitespace-nowrap text-xs text-slate-400">
@@ -233,6 +234,7 @@ function FormulaList({
                       formula={e.formula}
                       count={e.count}
                       hasResult={!!results[e.formula.id]}
+                      heuristic={paper.formulaSupport === 'heuristic'}
                       onOpen={() => onSelect(e.formula.id)}
                     />
                   </li>
@@ -249,6 +251,7 @@ function FormulaList({
                     formula={e.formula}
                     count={e.count}
                     hasResult={!!results[e.formula.id]}
+                    heuristic={paper.formulaSupport === 'heuristic'}
                     onOpen={() => onSelect(e.formula.id)}
                   />
                 ))}
@@ -271,11 +274,13 @@ function FormulaCard({
   formula,
   count,
   hasResult,
+  heuristic,
   onOpen,
 }: {
   formula: Formula;
   count: number;
   hasResult: boolean;
+  heuristic: boolean;
   onOpen: () => void;
 }) {
   const html = useMemo(
@@ -287,7 +292,11 @@ function FormulaCard({
     <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-1 flex items-center gap-2 text-[11px] text-slate-400">
         <span>#{formula.id}</span>
-        <span>{formula.display ? 'block' : 'inline'}</span>
+        <span>{heuristic ? (formula.display ? '疑似块级' : '疑似行内') : (formula.display ? 'block' : 'inline')}</span>
+        {heuristic && formula.page && <span>第 {formula.page} 页</span>}
+        {heuristic && formula.confidence != null && (
+          <span>置信度 {Math.round(formula.confidence * 100)}%</span>
+        )}
         {count > 1 && (
           <span
             className="rounded bg-slate-100 px-1 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
@@ -302,10 +311,16 @@ function FormulaCard({
           </span>
         )}
       </div>
-      <div
-        className="overflow-x-auto py-1 text-sm"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      {heuristic ? (
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-amber-50/70 p-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+          {formula.latex}
+        </pre>
+      ) : (
+        <div
+          className="overflow-x-auto py-1 text-sm"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      )}
       <div className="mt-2 flex gap-2">
         <button
           onClick={onOpen}
@@ -323,11 +338,13 @@ function SymbolChip({
   formula,
   count,
   hasResult,
+  heuristic,
   onOpen,
 }: {
   formula: Formula;
   count: number;
   hasResult: boolean;
+  heuristic: boolean;
   onOpen: () => void;
 }) {
   const html = useMemo(
@@ -346,7 +363,11 @@ function SymbolChip({
           : 'border-slate-200 bg-white hover:border-brand-400 dark:border-slate-800 dark:bg-slate-900')
       }
     >
-      <span className="pointer-events-none" dangerouslySetInnerHTML={{ __html: html }} />
+      {heuristic ? (
+        <span className="pointer-events-none font-mono">{formula.latex}</span>
+      ) : (
+        <span className="pointer-events-none" dangerouslySetInnerHTML={{ __html: html }} />
+      )}
       {count > 1 && <span className="text-[10px] text-slate-400">×{count}</span>}
     </button>
   );
@@ -371,6 +392,7 @@ function DerivationDetail({
   const [error, setError] = useState<string | null>(null);
   const [showReasoning, setShowReasoning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const heuristic = paper.formulaSupport === 'heuristic';
 
   const formulaHtml = useMemo(
     () => renderLatexToHtml(formula.latex, formula.display),
@@ -425,6 +447,7 @@ function DerivationDetail({
 
   return (
     <section className="space-y-3">
+      {heuristic && <PdfFormulaExperimentalNotice />}
       {/* 顶部栏 */}
       <div className="flex items-center justify-between">
         <button
@@ -438,21 +461,36 @@ function DerivationDetail({
         </span>
       </div>
 
-      {/* 公式展示（KaTeX） */}
+      {/* 网页公式展示真实 LaTeX；PDF 候选展示原始文本，避免伪装成准确公式。 */}
       <div className="rounded border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mb-2 text-[11px] text-slate-400">目标公式</div>
-        <div
-          className="overflow-x-auto py-1 text-sm"
-          dangerouslySetInnerHTML={{ __html: formulaHtml }}
-        />
-        <details className="mt-2">
-          <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
-            查看原始 LaTeX
-          </summary>
-          <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 text-[11px] dark:bg-slate-800/60">
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+          <span>{heuristic ? '疑似公式（原始 PDF 文本）' : '目标公式'}</span>
+          {heuristic && formula.confidence != null && (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+              置信度 {Math.round(formula.confidence * 100)}%
+            </span>
+          )}
+        </div>
+        {heuristic ? (
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-amber-50/70 p-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
             {formula.latex}
           </pre>
-        </details>
+        ) : (
+          <>
+            <div
+              className="overflow-x-auto py-1 text-sm"
+              dangerouslySetInnerHTML={{ __html: formulaHtml }}
+            />
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
+                查看原始 LaTeX
+              </summary>
+              <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 text-[11px] dark:bg-slate-800/60">
+                {formula.latex}
+              </pre>
+            </details>
+          </>
+        )}
       </div>
 
       {/* 控制栏 */}
@@ -472,12 +510,21 @@ function DerivationDetail({
             停止
           </button>
         )}
-        <button
-          onClick={handleScrollBack}
-          className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:border-brand-400 dark:border-slate-700 dark:text-slate-300"
-        >
-          回跳原文
-        </button>
+        {heuristic ? (
+          <span
+            className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+            title="PDF 无可回跳 DOM，请在原 PDF 中按页码定位"
+          >
+            {formula.page ? `第 ${formula.page} 页` : 'PDF 页码未知'}
+          </span>
+        ) : (
+          <button
+            onClick={handleScrollBack}
+            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:border-brand-400 dark:border-slate-700 dark:text-slate-300"
+          >
+            回跳原文
+          </button>
+        )}
         {result?.model && (
           <span className="text-[11px] text-slate-400">
             {result.providerId} / {result.model}
@@ -523,6 +570,17 @@ function DerivationDetail({
         </div>
       )}
     </section>
+  );
+}
+
+function PdfFormulaExperimentalNotice() {
+  return (
+    <div className="rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+      <strong>AI 识别，实验性</strong>
+      <p className="mt-1">
+        下列内容来自 PDF 文本层的疑似公式，可能缺符号、错位或误识别。生成时会先由 AI 还原 LaTeX，请务必对照原 PDF。
+      </p>
+    </div>
   );
 }
 

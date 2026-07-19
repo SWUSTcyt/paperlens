@@ -14,6 +14,7 @@ const CHROME_CANDIDATES = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
 ].filter(Boolean);
 const INTERACTIVE_PERMISSIONS = process.argv.includes('--interactive-permissions');
+const PHASE_C = process.argv.includes('--phase-c');
 
 async function main() {
 const chromePath = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
@@ -91,6 +92,21 @@ try {
   });
   results.push(`PASS arXiv /html 抽取${htmlSmoke.injectedFallback ? '（自动注入未生效，使用构建产物注入）' : ''}`);
 
+  if (PHASE_C) {
+    await clickButton(sidepanelClient, '抽取本页');
+    await waitForText(sidepanelClient, '已抽取：', 20_000);
+    await clickButton(sidepanelClient, '公式推导');
+    await clickButton(sidepanelClient, '生成推导');
+    await waitForText(sidepanelClient, '目标公式', 15_000);
+    const htmlFormulaDetail = await sidepanelClient.evaluate("document.body?.innerText || ''");
+    if (!htmlFormulaDetail.includes('回跳原文') || htmlFormulaDetail.includes('AI 识别，实验性')) {
+      throw new Error('网页真 LaTeX 公式 UI 被 PDF 实验性路径污染。');
+    }
+    results.push('PASS 网页真 LaTeX 公式与 DOM 回跳入口');
+    await clickButton(sidepanelClient, '← 返回公式列表');
+    await clickButton(sidepanelClient, '论文解读');
+  }
+
   await smokeArxivPage({
     port,
     sidepanelClient,
@@ -116,7 +132,29 @@ try {
       const paper = Object.values(entries)
         .map((entry) => entry?.paper)
         .find((item) => item?.url?.startsWith('pdf:') && item?.title === 'Attention Is All You Need');
-      return paper ? { authors: paper.authors, pageCount: paper.pageCount, sections: paper.sections.length } : null;
+      const sectionFormulaIds = [];
+      const collectFormulaIds = (sections) => {
+        for (const section of sections) {
+          sectionFormulaIds.push(...section.formulaIds);
+          collectFormulaIds(section.children);
+        }
+      };
+      if (paper) collectFormulaIds(paper.sections);
+      return paper ? {
+        authors: paper.authors,
+        pageCount: paper.pageCount,
+        sections: paper.sections.length,
+        formulaSupport: paper.formulaSupport,
+        formulas: paper.formulas.map((formula) => ({
+          id: formula.id,
+          page: formula.page,
+          confidence: formula.confidence,
+          sectionPath: formula.sectionPath,
+          context: formula.context,
+          text: formula.latex,
+        })),
+        sectionFormulaIds,
+      } : null;
     })()`),
     15_000,
     '上传 PDF 缓存元数据',
@@ -125,6 +163,21 @@ try {
     throw new Error(`上传 PDF 作者识别不足：${JSON.stringify(uploadMetadata)}`);
   }
   results.push(`PASS 上传 PDF 解析与合成来源切换（${uploadMetadata.authors.length} 位作者）`);
+  if (PHASE_C) {
+    if (uploadMetadata.formulaSupport !== 'heuristic' || uploadMetadata.formulas.length === 0) {
+      throw new Error(`真实 PDF 未产生可靠公式候选：${JSON.stringify(uploadMetadata)}`);
+    }
+    if (uploadMetadata.formulas.some((formula) => !formula.page || formula.confidence == null)) {
+      throw new Error(`真实 PDF 公式缺少页码或置信度：${JSON.stringify(uploadMetadata.formulas.slice(0, 5))}`);
+    }
+    if (uploadMetadata.formulas.some((formula) => !formula.sectionPath || !formula.context)) {
+      throw new Error(`真实 PDF 公式缺少章节路径或上下文：${JSON.stringify(uploadMetadata.formulas.slice(0, 5))}`);
+    }
+    if (uploadMetadata.formulas.some((formula) => !uploadMetadata.sectionFormulaIds.includes(formula.id))) {
+      throw new Error(`真实 PDF 公式 ID 未写入章节树：${JSON.stringify(uploadMetadata)}`);
+    }
+    results.push(`PASS 真实 PDF 公式候选（${uploadMetadata.formulas.length} 条）`);
+  }
 
   await setFileInput(sidepanelClient, singleColumnFixturePath);
   await waitFor(async () => {
@@ -158,6 +211,55 @@ try {
     throw new Error('PDF Markdown 导出预览缺少论文标题。');
   }
   results.push('PASS PDF Markdown 导出预览');
+
+  if (PHASE_C) {
+    await clickButton(sidepanelClient, '公式推导');
+    await waitForText(sidepanelClient, 'AI 识别，实验性', 15_000);
+    await clickButton(sidepanelClient, '生成推导');
+    await waitForText(sidepanelClient, '疑似公式（原始 PDF 文本）', 15_000);
+    const formulaDetail = await sidepanelClient.evaluate("document.body?.innerText || ''");
+    if (!/第 \d+ 页/.test(formulaDetail) || formulaDetail.includes('回跳原文')) {
+      throw new Error('PDF 公式详情未正确降级为页码定位。');
+    }
+    results.push('PASS 实验性公式标识与页码定位降级');
+
+    const fakePortInstalled = await sidepanelClient.evaluate(`(() => {
+      const messageListeners = [];
+      const disconnectListeners = [];
+      const fakeConnect = () => ({
+        onMessage: { addListener: (listener) => messageListeners.push(listener) },
+        onDisconnect: { addListener: (listener) => disconnectListeners.push(listener) },
+        postMessage: (message) => {
+          if (message.type !== 'start') return;
+          window.__paperlensPhaseCPrompt = message;
+          setTimeout(() => messageListeners.forEach((listener) => listener({
+            type: 'ready', providerId: 'openai', model: 'phase-c-browser-mock'
+          })), 0);
+          setTimeout(() => messageListeners.forEach((listener) => listener({
+            type: 'delta', content: '## 公式还原\\n\\nPhase C mock derivation complete'
+          })), 10);
+          setTimeout(() => messageListeners.forEach((listener) => listener({ type: 'done' })), 20);
+        },
+        disconnect: () => disconnectListeners.forEach((listener) => listener()),
+      });
+      try {
+        Object.defineProperty(chrome.runtime, 'connect', { configurable: true, value: fakeConnect });
+        return chrome.runtime.connect === fakeConnect;
+      } catch {
+        return false;
+      }
+    })()`);
+    if (!fakePortInstalled) throw new Error('无法安装浏览器内 LLM Port 测试替身。');
+    await clickButton(sidepanelClient, '生成推导');
+    await waitForText(sidepanelClient, 'Phase C mock derivation complete', 15_000);
+    const capturedPrompt = await sidepanelClient.evaluate('window.__paperlensPhaseCPrompt');
+    const systemPrompt = capturedPrompt?.messages?.[0]?.content || '';
+    const userPrompt = capturedPrompt?.messages?.[1]?.content || '';
+    if (!systemPrompt.includes('先还原') || !userPrompt.includes('原始 PDF 公式文本') || !/页码：第 \d+ 页/.test(userPrompt)) {
+      throw new Error(`浏览器推导链未发送 PDF heuristic prompt：${JSON.stringify(capturedPrompt)}`);
+    }
+    results.push('PASS PDF 先还原 prompt 与流式推导前端链路');
+  }
 
   if (INTERACTIVE_PERMISSIONS) {
     const remoteOutcome = await smokeOptionalRemotePdf({

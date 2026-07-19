@@ -4,7 +4,7 @@
 
 > 相关文档：
 > - `docs/architecture.md` — 项目当前架构与交接参考（onboarding 必读）
-> - `docs/plan-pdf-extraction.md` — 下一个大功能「本地 PDF 文本解析」的完整方案
+> - `docs/plan-pdf-extraction.md` — PDF Phase A–C 的完整方案与验收状态
 
 ## 时间线补记（M7 之后）
 
@@ -33,6 +33,14 @@
 - **大文件体验**：每页完成后报告进度并 `setTimeout(0)` 让出渲染；loading task 在 `finally` 中销毁。
 - **真实样本回归**：Attention PDF 首页把 8 位作者和 Unicode 脚注符号排在同一文本行；作者解析需按 `¹²³⁴⁵⁶⁷⁸⁹∗*†‡` 拆分，不能只按逗号或换行判断。该缺陷先由浏览器冒烟发现，再补 Node 回归测试。
 - **验收**：17 项 Node 测试覆盖权限/下载正常与异常路径及版面结构；Edge 冒烟覆盖 arXiv 三类 URL、Attention 双栏、Adam 单栏、上传、`file://`、Markdown 导出，并实际完成任意在线 PDF 当前 origin 权限允许与解析。
+
+## M10 PDF Phase C（实验性公式）
+
+- **候选而非 OCR**：`formulaHeuristic.ts` 只使用文本层信息，综合数学字体占比、Unicode 数学符号、居中短行与行尾公式编号打分；短噪声、页边缘和参考文献区排除。没有达到质量门禁的候选时继续使用 `formulaSupport='none'`。
+- **原文契约**：heuristic 模式的 `Formula.latex` 实际保存原始 PDF 文本，同时填 `page/confidence/context/sectionPath`；ID 回填到章节树。UI 与 Markdown 导出不得把它伪装成真实 LaTeX。
+- **推导隔离**：`derive.ts` 只在 `formulaSupport='heuristic'` 时选择“先还原 LaTeX，再逐步推导”prompt；网页真 LaTeX 继续原 prompt 和 `SCROLL_TO_FORMULA`。PDF UI 显著提示“AI 识别，实验性”，定位降级为页码。
+- **真实样本**：Attention PDF 识别到 3 条高置信候选，均有页码、上下文、章节路径且写入 `formulaIds`；原始文本仍可能缺失字形，必须依赖上下文保守还原。阈值优化属于后续 P2，不以提高召回率为由放宽误报门禁。
+- **验收边界**：25 项 Node 测试通过；Edge 冒烟覆盖 PDF 候选/UI/页码、网页真 LaTeX 隔离和浏览器内模拟 LLM Port 的流式 prompt 链。临时 profile 无 API Key，真实 Provider 的还原与教学质量仍需带 Key 人工评估。
 
 ## M0 环境搭建
 

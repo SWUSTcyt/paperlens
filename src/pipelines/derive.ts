@@ -2,7 +2,7 @@
 // 目前是单发 single-shot；如公式所在章节过长，会按 token 预算截断。
 
 import type { Formula, PaperContent, Section } from '../extractors/types';
-import { buildDerivationSystem, buildDerivationUser } from '../prompts/derivation';
+import { buildDerivationPrompt } from '../prompts/derivation';
 import { chatStream, type ChatStreamChunk } from '../bridge/llmBridge';
 import { truncateByTokens } from '../util/tokenEstimate';
 
@@ -21,15 +21,14 @@ export async function* derivePipeline(
     findFormulaContext(paper, formula.id),
     CONTEXT_BUDGET_TOKENS,
   );
-  const system = buildDerivationSystem();
-  const user = buildDerivationUser(paper, formula, { context });
+  const prompt = buildDerivationPrompt(paper, formula, { context });
 
   for await (const chunk of chatStream({
     task: 'derivation',
     signal: opts.signal,
     messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
+      { role: 'system', content: prompt.system },
+      { role: 'user', content: prompt.user },
     ],
   })) {
     yield chunk;

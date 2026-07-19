@@ -293,7 +293,7 @@ function ExtractBar({
   isUploaded: boolean;
   onExtract: () => void;
 }) {
-  // PDF 来源目前不抽公式，展示"页数 · 章节"，网页来源展示"公式 · 章节"
+  // PDF 来源展示"页数 · 章节"，公式候选在推导 Tab 单独以实验性能力呈现。
   const idleLabel = isPdf ? '解析本页 PDF' : '抽取本页';
   const busyLabel = isPdf
     ? progress
