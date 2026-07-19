@@ -2,6 +2,17 @@
 
 记录开发过程中的踩坑与关键决策，M7 时会沉淀为 `browser-extension-dev` Skill。
 
+> 相关文档：
+> - `docs/architecture.md` — 项目当前架构与交接参考（onboarding 必读）
+> - `docs/plan-pdf-extraction.md` — 下一个大功能「本地 PDF 文本解析」的完整方案
+
+## 时间线补记（M7 之后）
+
+- **公式列表按章节重组**（`DerivationTab.tsx`）：从扁平列表改为按 `sections[].formulaIds` 分组；同章节内相同 LaTeX 去重并标 `×N`；单变量/极短行内公式排后并弱化为可点击的小 chip（不隐藏，照顾数学基础较弱的用户）。
+- **display 识别修复**（`formula/extract.ts`）：ar5iv/LaTeXML 会把块级方程的 `<math>` 也标成 `display="inline"`，改为从祖先容器（`.ltx_equation` 等）推断 display。
+- **会话缓存与 tab 同步**（`storage/cache.ts` + `App.tsx`）：按 URL 缓存 paper/summary/derivations，切 tab / 页内跳转时恢复；用 `hydratedUrl` 门控避免竞态。
+- **提交环境约定**：Windows 下 git 操作走 Git Bash（PowerShell 对 `<>`/`&&`/heredoc 解析有坑），复杂 commit message 用临时文件 + `git commit -F`。
+
 ## M0 环境搭建
 
 ### 关键选型
