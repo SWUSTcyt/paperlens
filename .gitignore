@@ -23,3 +23,7 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# 本地 Codex 工作流（由 vibe-coding-playbook 安装，不纳入仓库）
+/.agents/
+/AGENTS.md
