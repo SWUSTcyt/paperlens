@@ -62,6 +62,81 @@ test('数学字体名称识别不把普通正文粗体当作数学字体', () =>
   assert.equal(isMathFontName('TimesNewRomanPS-BoldMT'), false);
 });
 
+test('双栏编号公式按所在栏中心识别，不再因偏离整页中心而整篇降级', () => {
+  const result = detectPdfFormulaCandidates([
+    line('2 Residual Learning', { y: 740, size: 15, font: 'Times-Bold' }),
+    line('we consider a building block defined as:', { y: 690, column: 1, x: 50, endX: 286 }),
+    line('y = F(x,{Wi}) +x. (1)', { y: 660, column: 1, x: 123, endX: 286, pageWidth: 612 }),
+  ], 10);
+
+  assert.equal(result.formulaSupport, 'heuristic');
+  assert.equal(result.formulas.length, 1);
+  assert.match(result.formulas[0].latex, /y = F\(x,\{Wi\}\) \+x\. \(1\)/);
+});
+
+test('编号锚点把同一视觉带中被误分栏的 Attention 与 FFN 片段重建成块', () => {
+  const result = detectPdfFormulaCandidates([
+    line('3.2.1 Scaled Dot-Product Attention', { y: 740, size: 15, font: 'Times-Bold' }),
+    line('Attention(Q, K, V', { y: 610, column: 1, x: 220, endX: 297 }),
+    line('QKT', { y: 619, column: 2, x: 356, endX: 377 }),
+    line(') = softmax( √ )V (1)', { y: 610, column: 2, x: 299, endX: 505 }),
+    line('dk', { y: 602, column: 2, x: 366, endX: 376 }),
+    line('The two most common attention functions are described next.', { y: 575 }),
+    line('FFN(x) = max(0', { y: 520, column: 1, x: 190, endX: 312 }),
+    line(', xW1 +b1)W2 +b2 (2)', { y: 520, column: 2, x: 313, endX: 500 }),
+  ], 10);
+
+  assert.equal(result.formulaSupport, 'heuristic');
+  assert.equal(result.formulas.length, 2);
+  assert.match(result.formulas[0].latex, /Attention\(Q, K, V/);
+  assert.match(result.formulas[0].latex, /QKT/);
+  assert.match(result.formulas[0].latex, /dk/);
+  assert.match(result.formulas[0].latex, /softmax/);
+  assert.match(result.formulas[1].latex, /FFN\(x\) = max\(0/);
+  assert.match(result.formulas[1].latex, /xW1 \+b1\)W2 \+b2 \(2\)/);
+  assert.doesNotMatch(result.formulas[0].latex, /most common attention/);
+});
+
+test('独立编号只关联邻近同栏公式碎片，不吞入正文或远处公式', () => {
+  const result = detectPdfFormulaCandidates([
+    line('2 Objective', { y: 740, size: 15, font: 'Times-Bold' }),
+    line('The objective is written below.', { y: 700, column: 1, x: 50, endX: 280 }),
+    line('∑T', { y: 665, column: 1, x: 145, endX: 170 }),
+    line('Lt = (yt −f(xt))2', { y: 655, column: 1, x: 105, endX: 230 }),
+    line('t=1', { y: 645, column: 1, x: 150, endX: 175 }),
+    line('(3)', { y: 655, column: 1, x: 260, endX: 278 }),
+    line('This sentence must remain context only.', { y: 615, column: 1, x: 50, endX: 280 }),
+    line('z = x + 1 (4)', { y: 540, column: 1, x: 125, endX: 275 }),
+  ], 10);
+
+  assert.equal(result.formulaSupport, 'heuristic');
+  assert.equal(result.formulas.length, 2);
+  assert.match(result.formulas[0].latex, /∑T/);
+  assert.match(result.formulas[0].latex, /Lt = \(yt −f\(xt\)\)2/);
+  assert.match(result.formulas[0].latex, /t=1/);
+  assert.match(result.formulas[0].latex, /\(3\)/);
+  assert.doesNotMatch(result.formulas[0].latex, /context only/);
+  assert.match(result.formulas[1].latex, /z = x \+ 1 \(4\)/);
+});
+
+test('栏中心编号门禁不把 BERT 风格的枚举正文当成公式', () => {
+  const result = detectPdfFormulaCandidates([
+    line('3 Training', { y: 740, size: 15, font: 'Times-Bold' }),
+    line('the i-th token with (1) the [MASK] token 80% of', {
+      y: 690, column: 1, x: 50, endX: 286, pageWidth: 612,
+    }),
+    line('the time (2) a random token 10% of the time (3)', {
+      y: 678, column: 1, x: 50, endX: 286, pageWidth: 612,
+    }),
+    line('ing, (2) hypothesis-premise pairs in entailment, (3)', {
+      y: 620, column: 2, x: 309, endX: 545, pageWidth: 612,
+    }),
+  ], 10);
+
+  assert.equal(result.formulaSupport, 'none');
+  assert.deepEqual(result.formulas, []);
+});
+
 function line(text, overrides = {}) {
   return {
     page: 1,
