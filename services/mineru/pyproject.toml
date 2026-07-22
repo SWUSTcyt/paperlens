@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "paperlens-mineru"
+version = "0.1.0"
+description = "PaperLens 本地 MinerU pipeline 薄服务"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "mineru[all]==3.4.4",
+  "Pillow>=10.4,<12",
+  "pypdfium2>=4.30,<5",
+  "python-multipart>=0.0.20,<1",
+  "uvicorn>=0.30,<1",
+]
+
+[project.scripts]
+paperlens-mineru = "paperlens_mineru.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/paperlens_mineru"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"schemas" = "paperlens_mineru/schemas"

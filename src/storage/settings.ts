@@ -3,6 +3,13 @@
 
 import type { ProviderId } from '../llm/types';
 import { PROVIDER_ORDER, getProvider } from '../llm/providers';
+import {
+  normalizeMineruSettings,
+  type MineruLocalSettings,
+} from '../mineru/settings';
+
+export { normalizeMineruSettings } from '../mineru/settings';
+export type { MineruLocalSettings } from '../mineru/settings';
 
 /** 单个 Provider 的用户配置 */
 export interface ProviderConfig {
@@ -33,6 +40,8 @@ export interface Settings {
   locale?: 'zh-CN' | 'en';
   /** 摘要详细程度：concise=简洁 / detailed=详细 */
   summaryVerbosity?: 'concise' | 'detailed';
+  /** 本地 MinerU 默认关闭；只允许 127.0.0.1，host 不开放配置。 */
+  mineru: MineruLocalSettings;
 }
 
 const SETTINGS_KEY = 'paperlens.settings';
@@ -50,6 +59,7 @@ export function defaultSettings(): Settings {
     providers,
     locale: 'zh-CN',
     summaryVerbosity: 'concise',
+    mineru: normalizeMineruSettings(),
   };
 }
 
@@ -127,5 +137,6 @@ function mergeSettings(base: Settings, patch?: Partial<Settings>): Settings {
     ...base,
     ...patch,
     providers,
+    mineru: normalizeMineruSettings(patch.mineru),
   };
 }

@@ -12,6 +12,9 @@ stats-*.json
 *.log
 .DS_Store
 Thumbs.db
+__pycache__/
+*.py[cod]
+/local-artifacts/
 
 # 环境变量
 .env

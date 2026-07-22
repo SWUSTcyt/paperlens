@@ -42,6 +42,16 @@
 - **真实样本**：Attention PDF 识别到 3 条高置信候选，均有页码、上下文、章节路径且写入 `formulaIds`；原始文本仍可能缺失字形，必须依赖上下文保守还原。阈值优化属于后续 P2，不以提高召回率为由放宽误报门禁。
 - **验收边界**：25 项 Node 测试通过；Edge 冒烟覆盖 PDF 候选/UI/页码、网页真 LaTeX 隔离和浏览器内模拟 LLM Port 的流式 prompt 链。临时 profile 无 API Key，真实 Provider 的还原与教学质量仍需带 Key 人工评估。
 
+## M11 MinerU pipeline 薄集成（Epic A/B）
+
+- **基线先成、增强后到**：pdf.js/Phase C 先产出完整 `PaperContent` 并立即开放解读；MinerU job 独立运行，只有完整 schema 校验通过后才原子替换公式字段。连接、401、版本、队列、任务失败、超时、取消和坏结果均保留原 baseline。
+- **安全边界**：扩展只构造 `http://127.0.0.1:<port>`；token 仅存 `chrome.storage.local`，不进入错误、导出或 Git。服务固定 MinerU 3.4.4 pipeline、单并发、200 MiB/500 页、30 分钟任务超时，输入在终态删除，result/crop 默认 24 小时 TTL。
+- **UI 与 prompt 隔离**：MinerU 无可靠页级事件时只显示真实阶段与耗时；展示公式携带 page+bbox 和惰性鉴权 crop，行内公式只显示统计。OCR 使用独立 prompt，不得凭经典论文记忆静默补齐，也不得冒充作者 TeX 源码。
+- **真实闭环**：Edge 上传 Attention PDF 后完成 5 条展示公式、108 处行内统计、全部章节关联与鉴权 crop；随后 Adam 单栏、`file://` 与 Markdown 导出通过。网页 `/abs`、`/html`、`/pdf`、真 LaTeX 回跳和 Phase C prompt 独立回归通过。
+- **浏览器专属坑**：原生 `fetch` 保存为实例字段后若以 `this.fetchImpl(...)` 调用，Chrome/Edge 会因错误接收者在请求前抛 `Illegal invocation`。默认 fetch 必须绑定 `globalThis`，并保留接收者回归测试。
+- **验收产物新鲜度**：一次浏览器冒烟曾复制早于源码的 `.output`，表现为 UI 永远等不到 job。浏览器测试命令现已强制先 `pnpm build`；以后不得用旧构建证明当前源码可用。
+- **冻结模型优先于测试猜测**：文档级 OCR 来源用 `formulaRecognition.provider`，逐公式来源用 `Formula.recognitionSource`。测试曾错误要求未冻结的 `PaperContent.recognitionSource`，被 TypeScript 拦下后按 Spec 修正，未扩张模型。
+
 ## M0 环境搭建
 
 ### 关键选型

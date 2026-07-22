@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "evaluationMode": {
+    "texSourceShortcut": false,
+    "inlineFormulaPolicy": "count-only",
+    "formulaListScope": "display-and-numbered"
+  },
+  "papers": [
+    { "id": "1706.03762", "title": "Attention Is All You Need", "pages": 15 },
+    { "id": "1412.6980", "title": "Adam", "pages": 15 },
+    { "id": "2006.11239", "title": "Denoising Diffusion Probabilistic Models", "pages": 25 },
+    { "id": "1312.6114", "title": "Auto-Encoding Variational Bayes", "pages": 14 },
+    { "id": "1512.03385", "title": "Deep Residual Learning for Image Recognition", "pages": 12 },
+    { "id": "1502.03167", "title": "Batch Normalization", "pages": 11 },
+    { "id": "1607.06450", "title": "Layer Normalization", "pages": 14 },
+    { "id": "1810.04805", "title": "BERT", "pages": 16 },
+    { "id": "2106.09685", "title": "LoRA", "pages": 26 },
+    { "id": "1312.5602", "title": "Playing Atari with Deep Reinforcement Learning", "pages": 9 },
+    { "id": "1406.2661", "title": "Generative Adversarial Nets", "pages": 9 },
+    { "id": "1707.06347", "title": "Proximal Policy Optimization Algorithms", "pages": 12 },
+    { "id": "1806.07366", "title": "Neural Ordinary Differential Equations", "pages": 18 }
+  ]
+}

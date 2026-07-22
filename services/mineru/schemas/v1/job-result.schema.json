@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperlens.local/schemas/mineru/v1/job-result.schema.json",
+  "title": "PaperLens MinerU Job Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "jobId", "engine", "document", "formulas", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "jobId": { "$ref": "#/$defs/id" },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "backend"],
+      "properties": {
+        "name": { "const": "mineru" },
+        "version": { "const": "3.4.4" },
+        "backend": { "const": "pipeline" }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pageCount", "displayFormulaCount", "inlineFormulaCount"],
+      "properties": {
+        "pageCount": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "displayFormulaCount": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "inlineFormulaCount": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+      }
+    },
+    "formulas": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/formula" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/warning" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "bbox": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        { "type": "integer", "minimum": 0, "maximum": 1000 },
+        { "type": "integer", "minimum": 0, "maximum": 1000 },
+        { "type": "integer", "minimum": 0, "maximum": 1000 },
+        { "type": "integer", "minimum": 0, "maximum": 1000 }
+      ],
+      "items": false
+    },
+    "formula": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "latex", "page", "bbox"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "latex": { "type": "string", "minLength": 1, "maxLength": 200000 },
+        "page": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "bbox": { "$ref": "#/$defs/bbox" },
+        "cropId": { "$ref": "#/$defs/id" },
+        "sectionPath": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "context": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/id" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    }
+  }
+}

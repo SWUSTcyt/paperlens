@@ -20,7 +20,15 @@ export type PaperSource = 'arxiv' | 'pdf';
  * - none：不支持公式抽取（如 PDF MVP 阶段）
  * 缺省视为 'latex'。
  */
-export type FormulaSupport = 'latex' | 'heuristic' | 'none';
+export type FormulaSupport = 'latex' | 'heuristic' | 'ocr' | 'none';
+
+export type FormulaRecognitionSource = 'html-latex' | 'pdf-heuristic' | 'mineru-ocr';
+
+export interface FormulaCropRef {
+  provider: 'mineru-local';
+  jobId: string;
+  cropId: string;
+}
 
 /** 公式节点 */
 export interface Formula {
@@ -40,6 +48,21 @@ export interface Formula {
   page?: number;
   /** PDF 启发式识别的置信度 0–1；网页来源为空 */
   confidence?: number;
+  /** 公式文本的识别来源；OCR 结果不得冒充网页真 LaTeX。 */
+  recognitionSource?: FormulaRecognitionSource;
+  /** PDF 页面内的 0–1000 左上角坐标。 */
+  bbox?: [number, number, number, number];
+  /** 只保存受控 job/crop 标识，不保存路径、URL 或图片字节。 */
+  cropRef?: FormulaCropRef;
+}
+
+export interface FormulaRecognitionSummary {
+  provider: 'mineru-local';
+  engine: { name: 'mineru'; version: '3.4.4'; backend: 'pipeline' };
+  displayFormulaCount: number;
+  inlineFormulaCount: number;
+  warnings: string[];
+  fallbackReason?: string;
 }
 
 /** 章节（支持层级） */
@@ -95,6 +118,8 @@ export interface PaperContent {
   formulaSupport?: FormulaSupport;
   /** PDF 页数；网页来源为空 */
   pageCount?: number;
+  /** 可选 OCR 增强摘要；旧缓存没有该字段时保持可读。 */
+  formulaRecognition?: FormulaRecognitionSummary;
 }
 
 /** 空白壳，方便 extractor 渐进填充 */

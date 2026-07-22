@@ -3,7 +3,7 @@
 > 目的：给任何接手者（含在 Codex/其他 IDE 中继续开发的自己）一份「项目当前是怎么运作的」权威参考。
 > 阅读顺序建议：本文件 → `docs/plan-pdf-extraction.md`（下一个大功能方案）→ `docs/dev-notes.md`（时间线与踩坑）。
 >
-> 最后更新：2026-07（M0–M10：含 Phase C PDF 实验性公式识别与推导）。
+> 最后更新：2026-07（M0–M11：含 MinerU 3.4.4 本地公式薄集成）。
 
 ---
 
@@ -17,7 +17,7 @@ PaperLens 是一个 Chrome Manifest V3 扩展，在 **arXiv 论文页**（`/abs`
 
 关键设计原则：**抽取来源对下游透明**——所有 extractor 归一到 `PaperContent`，Summary / Derivation / Export 三条链路不关心数据来自 DOM 还是 PDF。
 
-**PDF 路径要点**：不读 Chrome 内置阅读器沙箱；SidePanel 按 `tab.url` 自己 `fetch` 字节，用 pdf.js 解析——原文留在标签页，侧边栏出结果，天然并排。详见 `docs/plan-pdf-extraction.md`。
+**PDF 路径要点**：不读 Chrome 内置阅读器沙箱；SidePanel 按 `tab.url` 自己 `fetch` 字节，用 pdf.js 解析——原文留在标签页，侧边栏出结果，天然并排。可选 MinerU 增强只访问 `127.0.0.1`，必须在 Phase C 基线完成后独立运行，失败时原样保留基线。详见 `docs/plan-pdf-extraction.md` 与 `docs/plan-mineru-thin-integration.md`。
 
 ---
 
@@ -48,6 +48,7 @@ PaperLens 是一个 Chrome Manifest V3 扩展，在 **arXiv 论文页**（`/abs`
 - **SidePanel**（`entrypoints/sidepanel/`）：主 UI。三个 Tab：论文解读 / 公式推导 / 导出。它是所有用户交互与状态的中心。
 - **Service Worker**（`entrypoints/background.ts` + `src/llm/bgHandler.ts`）：只做两件事——(1) 点击图标打开 SidePanel；(2) 承载 LLM 流式 Port，把 SidePanel 的对话请求转成对各 Provider 的 `fetch` + SSE，再流回。**API Key 只在这里读取和使用，绝不注入页面。**
 - **Options 页**（`entrypoints/options/`）：BYOK 配置（各 Provider 的 Key、模型、为解读/推导分别绑定模型、测试连接）。
+- **MinerU 本地服务**（`services/mineru/`）：独立 Python 3.12 进程，只监听 `127.0.0.1`。SidePanel 用 bearer token 直接访问；服务负责受监管 worker、真实阶段、取消/超时、结果归一化与受控 crop。
 
 ### 为什么 LLM 走 Service Worker 而不是 SidePanel 直接 fetch？
 
@@ -86,6 +87,11 @@ src/
     sourceAccess.ts        在线 origin / file:// 最小权限流程
     progress.ts            分页进度与主线程让出
     formulaHeuristic.ts    数学字体/Unicode/居中编号公式候选、质量门禁与章节关联
+    formulaProvider.ts     Phase C 基线 → health 门禁 → MinerU job → 原子替换/确定性回退
+  mineru/
+    client.ts              固定 127.0.0.1 client、严格 schema/错误映射、crop 鉴权
+    contracts.ts           schema v1 TypeScript 契约
+    settings.ts            默认关闭的端口/token 配置归一化
   formula/
     extract.ts             从 <math> DOM 节点提取 LaTeX（含 display 推断）
     mathMarkdown.ts        Markdown 里 $...$ / $$...$$ ↔ KaTeX 渲染占位
@@ -113,6 +119,8 @@ src/
     download.ts            chrome.downloads 封装
   components/MarkdownView.tsx  marked + DOMPurify + KaTeX 渲染
   util/tokenEstimate.ts    轻量 token 估算 + 截断
+
+services/mineru/           Python 3.12 + MinerU 3.4.4 pipeline 本地薄服务
 ```
 
 ---
@@ -187,6 +195,13 @@ interface Formula {
 
 `App.tsx` 监听 `chrome.tabs.onActivated / onUpdated` 和 content 的 `PAGE_READY`，切页时按 URL 从 `chrome.storage.session` 恢复已生成内容。用 `hydratedUrl` 门控，避免「恢复完成前把空状态写回缓存」的竞态。**arXiv `/pdf/` 直接用真实 URL 作缓存 key；仅上传兜底路径才需要合成 key（Phase B）。**
 
+### 5.4 MinerU 公式增强
+
+1. 在线、`file://` 或上传 PDF 先由 pdf.js 产出完整 `PaperContent`，立即开放论文解读并缓存 Phase C 公式基线。
+2. 用户启用本地服务后，`formulaProvider.ts` 先执行 health/schema/版本/ready 门禁，再上传同一 PDF 字节并轮询真实 job 阶段；没有可靠页事件时 UI 只显示不定进度和耗时。
+3. 完成结果经严格校验后一次性替换 `formulas`、章节 `formulaIds` 与 `formulaRecognition`；任何连接、认证、版本、队列、超时、取消或结果错误都保留原 baseline。
+4. crop 只按 `jobId/cropId` 惰性获取为内存 blob URL，不写入 `chrome.storage.session`；OCR 推导使用独立 prompt，明确不是作者 TeX 源码。
+
 ---
 
 ## 6. 扩展点（接新来源时会碰到的地方）
@@ -211,6 +226,9 @@ interface Formula {
 - `pnpm test:pdf`：PDF 权限、来源、版面、结构和进度的 Node 单元/功能回归。
 - `pnpm test:phase-b:browser`：临时加载构建产物，用真实 PDF 回归 arXiv、上传、`file://` 和导出；`test:phase-b:permissions` 额外验证当前 origin 权限弹窗。
 - `pnpm test:phase-c:browser`：在 Phase B 来源回归之上，验证真实 PDF 候选元数据/章节关联、实验性 UI、页码定位、网页真 LaTeX 隔离，以及浏览器内流式 prompt 链路。
+- `pnpm test:mineru:client`：localhost client、schema、health 门禁、错误回退、原子合并与浏览器 fetch 绑定。
+- `pnpm test:mineru:browser`：真实 Edge + 本地 MinerU，验证 Attention 5/108、page+bbox、章节关联和鉴权 crop；需先启动服务并提供本地测试环境变量。
+- 所有浏览器测试脚本会先自动 `pnpm build`，禁止复用陈旧 `.output` 作为当前源码证据。
 - `pnpm dev`：HMR 开发。
 - 提交：Windows 下用 Git Bash（`D:\tools\Git\bin\bash.exe -lc '...'`），避免 PowerShell 对 `<>`/`&&`/heredoc 的解析问题；复杂 commit message 走临时文件 + `git commit -F`（见 `git-push-flow` skill 与 dev-notes）。
 - 远端：`github.com/SWUSTcyt/paperlens`，主分支 `main`。
@@ -224,3 +242,5 @@ interface Formula {
 - **权限最小化**：arXiv 与 Provider 使用固定 host permission；任意在线 PDF 通过 `optional_host_permissions` 只申请当前 origin；`file:///*` 仍需用户在扩展详情手动开启。
 - **chrome.storage.session** 有容量上限（约 10MB/键空间量级），缓存整篇 paper 可以，勿缓存原始二进制。
 - **PDF 公式不是 LaTeX 源码**：`Formula.latex` 在 heuristic 模式下保存的是原始文本；UI/导出必须按原文展示，只有 LLM prompt 可以尝试还原。候选不足时保持 `formulaSupport='none'`。
+- **MinerU OCR 也不是作者源码**：逐公式来源必须是 `mineru-ocr`，文档级来源用 `formulaRecognition.provider='mineru-local'`；不要添加未经 Spec 冻结的顶层来源字段。
+- **浏览器原生 Web API 接收者**：把 `fetch` 等原生函数保存为回调时必须绑定合法的 `globalThis`，Node mock 通过不能替代浏览器 E2E。

@@ -136,7 +136,10 @@ export async function extractPdf(
     // 7. 实验性公式候选：失败或质量不足都回到 none，不影响正文与解读。
     try {
       const formulaResult = detectPdfFormulaCandidates(bodyLines, bodySize, detectHeading);
-      paper.formulas = formulaResult.formulas;
+      paper.formulas = formulaResult.formulas.map((formula) => ({
+        ...formula,
+        recognitionSource: 'pdf-heuristic' as const,
+      }));
       paper.formulaSupport = formulaResult.formulaSupport;
       if (formulaResult.formulaSupport === 'heuristic') {
         assignFormulaIdsToSections(paper.sections, paper.formulas);

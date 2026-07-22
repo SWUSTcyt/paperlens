@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "jobId": "job_01jbert0123456789abcdef",
+  "engine": {
+    "name": "mineru",
+    "version": "3.4.4",
+    "backend": "pipeline"
+  },
+  "document": {
+    "pageCount": 16,
+    "displayFormulaCount": 0,
+    "inlineFormulaCount": 58
+  },
+  "formulas": [],
+  "warnings": [
+    {
+      "code": "NO_DISPLAY_FORMULAS",
+      "message": "未识别到展示公式；行内公式仅统计。"
+    }
+  ]
+}

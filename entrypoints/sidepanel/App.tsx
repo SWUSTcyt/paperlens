@@ -3,7 +3,7 @@ import type { PaperContent, Section } from '../../src/extractors/types';
 import { requestExtractFromActiveTab } from '../../src/bridge/extractBridge';
 import {
   detectPdfUrl,
-  extractPdfFromUrl,
+  extractPdfSourceFromUrl,
   openFileAccessSettings,
   PdfSourceError,
   type PdfSourceErrorCode,
@@ -14,6 +14,11 @@ import type { PdfExtractionProgress } from '../../src/pdf/progress';
 import { assertPdfBytes, buildUploadCacheKey } from '../../src/pdf/sourceUrl';
 import { loadPageCache, savePageCache } from '../../src/storage/cache';
 import { loadSettings, onSettingsChanged } from '../../src/storage/settings';
+import {
+  enhancePdfFormulas,
+  type PdfFormulaFallbackReason,
+} from '../../src/pdf/formulaProvider';
+import type { MineruJobStage } from '../../src/mineru/contracts';
 import { SummaryTab, type SummaryResult } from './tabs/SummaryTab';
 import { DerivationTab, type DerivationResult } from './tabs/DerivationTab';
 import { ExportTab } from './tabs/ExportTab';
@@ -32,6 +37,14 @@ interface ExtractFailure {
   code?: PdfSourceErrorCode;
 }
 
+type MineruUiStage = MineruJobStage | 'uploading' | 'fallback' | 'cancelled';
+
+interface MineruUiState {
+  stage: MineruUiStage;
+  elapsedMs: number;
+  fallbackReason?: PdfFormulaFallbackReason;
+}
+
 const TABS: Array<{ key: TabKey; label: string; hint: string }> = [
   { key: 'summary', label: '论文解读', hint: '结构化总结论文核心内容' },
   { key: 'derivation', label: '公式推导', hint: '逐步推导并拆解数学符号' },
@@ -44,6 +57,7 @@ export default function App() {
   const [paper, setPaper] = useState<PaperContent | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [pdfProgress, setPdfProgress] = useState<PdfExtractionProgress | null>(null);
+  const [mineruState, setMineruState] = useState<MineruUiState | null>(null);
   const [extractError, setExtractError] = useState<ExtractFailure | null>(null);
   const [summary, setSummary] = useState<SummaryResult | null>(null);
   const [derivations, setDerivations] = useState<Record<number, DerivationResult>>({});
@@ -53,10 +67,16 @@ export default function App() {
   const [needsApiKey, setNeedsApiKey] = useState(false);
   // 当前页面 URL 的引用，供异步切换时判断是否已被后续切换覆盖
   const currentUrlRef = useRef<string>('');
+  const mineruRunRef = useRef(0);
+  const mineruAbortRef = useRef<AbortController | null>(null);
 
   // 切换到某个页面：更新页面信息，并按 URL 从会话缓存恢复已生成的内容
   async function switchToPage(next: PageState) {
     if (next.url === currentUrlRef.current && page) return; // 同一页，无需切换
+    mineruRunRef.current += 1;
+    mineruAbortRef.current?.abort();
+    mineruAbortRef.current = null;
+    setMineruState(null);
     currentUrlRef.current = next.url;
     setPage(next);
     setExtractError(null);
@@ -117,6 +137,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => () => mineruAbortRef.current?.abort(), []);
+
   // 抽取/解读/推导结果变化时，写入该 URL 的会话缓存（恢复完成后才写，避免覆盖）
   useEffect(() => {
     if (!page?.url || hydratedUrl !== page.url) return;
@@ -152,21 +174,100 @@ export default function App() {
 
   const supported = page && page.kind !== 'unknown';
 
+  async function startMineruEnhancement(
+    baseline: PaperContent,
+    buffer: ArrayBuffer,
+    targetUrl: string,
+    filename: string,
+  ) {
+    const runId = ++mineruRunRef.current;
+    mineruAbortRef.current?.abort();
+    const controller = new AbortController();
+    mineruAbortRef.current = controller;
+    let settings;
+    try {
+      settings = await loadSettings();
+    } catch {
+      if (mineruRunRef.current === runId && currentUrlRef.current === targetUrl) {
+        mineruAbortRef.current = null;
+        setMineruState({ stage: 'fallback', elapsedMs: 0, fallbackReason: 'config-invalid' });
+      }
+      return;
+    }
+    if (mineruRunRef.current !== runId || currentUrlRef.current !== targetUrl) return;
+    if (!settings.mineru.enabled) {
+      mineruAbortRef.current = null;
+      setMineruState(null);
+      return;
+    }
+    const startedAt = Date.now();
+    setMineruState({ stage: 'uploading', elapsedMs: 0 });
+
+    const outcome = await enhancePdfFormulas({
+      baseline,
+      pdfBytes: buffer,
+      settings: settings.mineru,
+      signal: controller.signal,
+      filename,
+      onStatus: (status) => {
+        if (mineruRunRef.current !== runId || currentUrlRef.current !== targetUrl) return;
+        setMineruState({ stage: status.stage, elapsedMs: status.elapsedMs });
+      },
+    });
+    if (mineruRunRef.current !== runId || currentUrlRef.current !== targetUrl) return;
+    mineruAbortRef.current = null;
+    if (outcome.kind === 'enhanced') {
+      setPaper(outcome.paper);
+      setDerivations({});
+      setMineruState({ stage: 'completed', elapsedMs: Date.now() - startedAt });
+    } else if (outcome.kind === 'fallback') {
+      setMineruState({
+        stage: 'fallback',
+        elapsedMs: Date.now() - startedAt,
+        fallbackReason: outcome.reason,
+      });
+    } else if (outcome.kind === 'cancelled') {
+      setMineruState({ stage: 'cancelled', elapsedMs: Date.now() - startedAt });
+    } else {
+      setMineruState(null);
+    }
+  }
+
+  function cancelMineruEnhancement() {
+    if (!mineruAbortRef.current) return;
+    mineruAbortRef.current.abort();
+    setMineruState((current) => current
+      ? { ...current, stage: 'cancelling' }
+      : current);
+  }
+
   async function handleExtract() {
     if (page?.url.startsWith('pdf:')) return;
+    const targetUrl = page?.url ?? '';
+    const targetTitle = page?.title ?? 'paper.pdf';
+    if (page?.kind === 'pdf') {
+      mineruRunRef.current += 1;
+      mineruAbortRef.current?.abort();
+      mineruAbortRef.current = null;
+      setMineruState(null);
+    }
     setExtracting(true);
     setPdfProgress(null);
     setExtractError(null);
     try {
       // PDF 来源：在 SidePanel 内 fetch 字节并本地解析；其余走 Content Script 抽取
-      const data =
-        page?.kind === 'pdf'
-          ? await extractPdfFromUrl(page.url, page.title, { onProgress: setPdfProgress })
-          : await requestExtractFromActiveTab();
+      const pdfSource = page?.kind === 'pdf'
+        ? await extractPdfSourceFromUrl(page.url, page.title, { onProgress: setPdfProgress })
+        : null;
+      const data = pdfSource?.paper ?? await requestExtractFromActiveTab();
+      if (targetUrl && currentUrlRef.current !== targetUrl) return;
       setPaper(data);
       // 重新抽取视为对当前页的一次刷新，清空旧的解读与推导
       setSummary(null);
       setDerivations({});
+      if (pdfSource) {
+        void startMineruEnhancement(data, pdfSource.buffer, targetUrl, targetTitle || 'paper.pdf');
+      }
     } catch (err) {
       setExtractError({
         message: err instanceof Error ? err.message : String(err),
@@ -178,6 +279,10 @@ export default function App() {
   }
 
   async function handleFileUpload(file: File) {
+    mineruRunRef.current += 1;
+    mineruAbortRef.current?.abort();
+    mineruAbortRef.current = null;
+    setMineruState(null);
     setExtracting(true);
     setPdfProgress(null);
     try {
@@ -190,6 +295,7 @@ export default function App() {
       setSummary(null);
       setDerivations({});
       setExtractError(null);
+      void startMineruEnhancement(data, buffer, cacheKey, file.name);
     } finally {
       setExtracting(false);
     }
@@ -220,6 +326,9 @@ export default function App() {
       </nav>
 
       <main className="flex-1 overflow-y-auto p-4">
+        {activeTab === 'derivation' && paper?.source === 'pdf' && mineruState && (
+          <MineruProgressCard state={mineruState} onCancel={cancelMineruEnhancement} />
+        )}
         {!supported ? (
           <>
             <UnsupportedHint />
@@ -364,6 +473,92 @@ function ExtractBar({
       )}
     </div>
   );
+}
+
+function MineruProgressCard({
+  state,
+  onCancel,
+}: {
+  state: MineruUiState;
+  onCancel: () => void;
+}) {
+  const active = [
+    'uploading',
+    'accepted',
+    'queued',
+    'preparing',
+    'loading-model',
+    'parsing',
+    'normalizing',
+    'crops-ready',
+  ].includes(state.stage);
+  const label = mineruStageLabel(state);
+  return (
+    <div
+      className="mb-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100"
+      aria-live="polite"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-medium">本地 MinerU 公式增强</div>
+          <div className="mt-1">{label}</div>
+          {state.elapsedMs > 0 && <div className="mt-1 opacity-70">已用时 {formatElapsed(state.elapsedMs)}</div>}
+        </div>
+        {active && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="shrink-0 rounded border border-sky-300 px-2 py-1 font-medium hover:bg-sky-100 dark:border-sky-800 dark:hover:bg-sky-900"
+          >
+            取消增强
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function mineruStageLabel(state: MineruUiState): string {
+  const labels: Partial<Record<MineruUiStage, string>> = {
+    uploading: '正在上传 PDF；浏览器未提供可靠传输总量，因此不显示估算百分比。',
+    accepted: '服务已接受任务。',
+    queued: '任务正在本地单并发队列中等待。',
+    preparing: '正在准备本地任务。',
+    'loading-model': '正在加载 MinerU 模型。',
+    parsing: 'MinerU 正在解析；当前版本暂无可靠页级事件，因此保持不定进度。',
+    normalizing: '正在归一化展示公式、章节与上下文。',
+    'crops-ready': '公式裁剪图已准备完成。',
+    completed: '增强完成；公式列表已一次性更新。',
+    cancelling: '正在取消本地增强并清理输入。',
+    cancelled: '已取消增强；当前继续使用 Phase C 实验性结果。',
+    failed: '本地任务失败；当前继续使用 Phase C 实验性结果。',
+    'timed-out': '本地任务超时；当前继续使用 Phase C 实验性结果。',
+    fallback: `增强未生效（${fallbackReasonLabel(state.fallbackReason)}）；当前继续使用 Phase C 实验性结果。`,
+  };
+  return labels[state.stage] ?? '本地 MinerU 状态已更新。';
+}
+
+function fallbackReasonLabel(reason?: PdfFormulaFallbackReason): string {
+  const labels: Record<PdfFormulaFallbackReason, string> = {
+    'not-pdf': '不是 PDF 来源',
+    'config-invalid': '本地配置无效',
+    'connection-failed': '无法连接服务',
+    'service-not-ready': '服务尚未就绪',
+    'auth-failed': 'token 无效',
+    'version-incompatible': '版本不兼容',
+    'upload-failed': '上传失败',
+    'queue-full': '本地队列已满',
+    'job-failed': '任务失败',
+    timeout: '任务超时',
+    'invalid-result': '结果校验失败',
+  };
+  return reason ? labels[reason] : '未知原因';
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 function ApiKeyBanner() {

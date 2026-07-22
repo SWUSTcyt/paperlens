@@ -1,9 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Formula, PaperContent, Section } from '../../../src/extractors/types';
 import { derivePipeline } from '../../../src/pipelines/derive';
 import { MarkdownView } from '../../../src/components/MarkdownView';
 import { renderLatexToHtml } from '../../../src/formula/mathMarkdown';
 import { requestScrollToFormula } from '../../../src/bridge/extractBridge';
+import { loadSettings } from '../../../src/storage/settings';
+import { MineruClient } from '../../../src/mineru/client';
 
 export interface DerivationResult {
   content: string;
@@ -35,14 +37,20 @@ export function DerivationTab({ paper, results, onResultsChange }: Props) {
   if (paper.formulas.length === 0) {
     let desc: string;
     if (paper.source === 'pdf') {
-      desc =
-        '未识别到足够可靠的 PDF 公式候选，实验性公式功能已自动关闭。论文解读与导出不受影响；若需公式推导，请改用 arXiv HTML 或 ar5iv 的真实 LaTeX。';
+      desc = paper.formulaSupport === 'ocr'
+        ? `MinerU 已完成：未识别到展示/编号公式；正文中统计到 ${paper.formulaRecognition?.inlineFormulaCount ?? 0} 处行内公式，按当前策略不塞入推导列表。`
+        : '未识别到足够可靠的 PDF 公式候选，实验性公式功能已自动关闭。论文解读与导出不受影响；若需公式推导，请改用 arXiv HTML 或 ar5iv 的真实 LaTeX。';
     } else if (paper.kind === 'abs') {
       desc = '当前是摘要页（/abs/），不含 <math> 公式。请打开论文的 HTML 或 ar5iv 版本后再抽取。';
     } else {
       desc = '此页未抽到公式。可能该论文不含 <math> 标签。';
     }
-    return <Placeholder title="公式推导" desc={desc} />;
+    return (
+      <div className="space-y-3">
+        {paper.formulaSupport === 'ocr' && <MineruOcrNotice paper={paper} />}
+        <Placeholder title="公式推导" desc={desc} />
+      </div>
+    );
   }
 
   const selected = selectedId != null ? paper.formulas.find((f) => f.id === selectedId) ?? null : null;
@@ -197,6 +205,7 @@ function FormulaList({
   return (
     <section className="space-y-3">
       {paper.formulaSupport === 'heuristic' && <PdfFormulaExperimentalNotice />}
+      {paper.formulaSupport === 'ocr' && <MineruOcrNotice paper={paper} />}
       <div className="flex items-center gap-2">
         <input
           type="text"
@@ -235,6 +244,7 @@ function FormulaList({
                       count={e.count}
                       hasResult={!!results[e.formula.id]}
                       heuristic={paper.formulaSupport === 'heuristic'}
+                      ocr={paper.formulaSupport === 'ocr'}
                       onOpen={() => onSelect(e.formula.id)}
                     />
                   </li>
@@ -252,6 +262,7 @@ function FormulaList({
                     count={e.count}
                     hasResult={!!results[e.formula.id]}
                     heuristic={paper.formulaSupport === 'heuristic'}
+                    ocr={paper.formulaSupport === 'ocr'}
                     onOpen={() => onSelect(e.formula.id)}
                   />
                 ))}
@@ -275,12 +286,14 @@ function FormulaCard({
   count,
   hasResult,
   heuristic,
+  ocr,
   onOpen,
 }: {
   formula: Formula;
   count: number;
   hasResult: boolean;
   heuristic: boolean;
+  ocr: boolean;
   onOpen: () => void;
 }) {
   const html = useMemo(
@@ -292,8 +305,9 @@ function FormulaCard({
     <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-1 flex items-center gap-2 text-[11px] text-slate-400">
         <span>#{formula.id}</span>
-        <span>{heuristic ? (formula.display ? '疑似块级' : '疑似行内') : (formula.display ? 'block' : 'inline')}</span>
-        {heuristic && formula.page && <span>第 {formula.page} 页</span>}
+        <span>{heuristic ? (formula.display ? '疑似块级' : '疑似行内') : ocr ? 'MinerU OCR 展示公式' : (formula.display ? 'block' : 'inline')}</span>
+        {(heuristic || ocr) && formula.page && <span>第 {formula.page} 页</span>}
+        {ocr && formula.bbox && <span>bbox {formula.bbox.join(',')}</span>}
         {heuristic && formula.confidence != null && (
           <span>置信度 {Math.round(formula.confidence * 100)}%</span>
         )}
@@ -321,6 +335,7 @@ function FormulaCard({
           dangerouslySetInnerHTML={{ __html: html }}
         />
       )}
+      {ocr && <MineruCropPreview formula={formula} />}
       <div className="mt-2 flex gap-2">
         <button
           onClick={onOpen}
@@ -339,12 +354,14 @@ function SymbolChip({
   count,
   hasResult,
   heuristic,
+  ocr,
   onOpen,
 }: {
   formula: Formula;
   count: number;
   hasResult: boolean;
   heuristic: boolean;
+  ocr: boolean;
   onOpen: () => void;
 }) {
   const html = useMemo(
@@ -393,6 +410,7 @@ function DerivationDetail({
   const [showReasoning, setShowReasoning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const heuristic = paper.formulaSupport === 'heuristic';
+  const ocr = paper.formulaSupport === 'ocr' || formula.recognitionSource === 'mineru-ocr';
 
   const formulaHtml = useMemo(
     () => renderLatexToHtml(formula.latex, formula.display),
@@ -448,6 +466,7 @@ function DerivationDetail({
   return (
     <section className="space-y-3">
       {heuristic && <PdfFormulaExperimentalNotice />}
+      {ocr && <MineruOcrNotice paper={paper} />}
       {/* 顶部栏 */}
       <div className="flex items-center justify-between">
         <button
@@ -464,7 +483,7 @@ function DerivationDetail({
       {/* 网页公式展示真实 LaTeX；PDF 候选展示原始文本，避免伪装成准确公式。 */}
       <div className="rounded border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-          <span>{heuristic ? '疑似公式（原始 PDF 文本）' : '目标公式'}</span>
+          <span>{heuristic ? '疑似公式（原始 PDF 文本）' : ocr ? 'MinerU OCR 候选（非作者 TeX 源码）' : '目标公式'}</span>
           {heuristic && formula.confidence != null && (
             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
               置信度 {Math.round(formula.confidence * 100)}%
@@ -491,6 +510,7 @@ function DerivationDetail({
             </details>
           </>
         )}
+        {ocr && <MineruCropPreview formula={formula} expanded />}
       </div>
 
       {/* 控制栏 */}
@@ -510,12 +530,12 @@ function DerivationDetail({
             停止
           </button>
         )}
-        {heuristic ? (
+        {heuristic || ocr ? (
           <span
             className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
             title="PDF 无可回跳 DOM，请在原 PDF 中按页码定位"
           >
-            {formula.page ? `第 ${formula.page} 页` : 'PDF 页码未知'}
+            {formula.page ? `第 ${formula.page} 页${ocr && formula.bbox ? ` · bbox ${formula.bbox.join(',')}` : ''}` : 'PDF 页码未知'}
           </span>
         ) : (
           <button
@@ -580,6 +600,93 @@ function PdfFormulaExperimentalNotice() {
       <p className="mt-1">
         下列内容来自 PDF 文本层的疑似公式，可能缺符号、错位或误识别。生成时会先由 AI 还原 LaTeX，请务必对照原 PDF。
       </p>
+    </div>
+  );
+}
+
+function MineruOcrNotice({ paper }: { paper: PaperContent }) {
+  return (
+    <div className="rounded border border-sky-300 bg-sky-50 p-3 text-xs text-sky-950 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
+      <strong>MinerU 本地识别（OCR）</strong>
+      <p className="mt-1">
+        列表只收录展示/编号公式；正文另统计 {paper.formulaRecognition?.inlineFormulaCount ?? 0} 处行内公式，不批量塞入推导列表。
+        OCR LaTeX 不是作者源码，推导前请展开裁剪图核对。
+      </p>
+      <p className="mt-1 text-amber-700 dark:text-amber-300">
+        已知上限：复杂 BatchNorm 多行块可能漏检，超长 array 可能截断，扫描件与非标准排版也不稳定。
+      </p>
+    </div>
+  );
+}
+
+function MineruCropPreview({
+  formula,
+  expanded = false,
+}: {
+  formula: Formula;
+  expanded?: boolean;
+}) {
+  const [open, setOpen] = useState(expanded);
+  const [loading, setLoading] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+  }, [imageUrl]);
+
+  useEffect(() => {
+    if (expanded && formula.cropRef && !imageUrl && !loading && !error) void loadCrop();
+    // 只在详情首次展开时懒加载；列表由用户点击触发。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]);
+
+  if (!formula.cropRef) return null;
+
+  async function loadCrop() {
+    if (!formula.cropRef || imageUrl || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const settings = await loadSettings();
+      const client = new MineruClient(settings.mineru);
+      const blob = await client.getCrop(formula.cropRef.jobId, formula.cropRef.cropId);
+      setImageUrl(URL.createObjectURL(blob));
+    } catch {
+      setError('裁剪图不可用或已过期；公式文本与推导仍可继续使用。');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && !imageUrl && !error) void loadCrop();
+  }
+
+  return (
+    <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950/40">
+      <button
+        type="button"
+        onClick={toggle}
+        className="text-[11px] font-medium text-brand-600 hover:underline dark:text-brand-300"
+      >
+        {open ? '收起裁剪图' : '查看裁剪图核对'}
+      </button>
+      {open && (
+        <div className="mt-2">
+          {loading && <span className="text-[11px] text-slate-400">正在从本地服务读取裁剪图…</span>}
+          {error && <span className="text-[11px] text-amber-700 dark:text-amber-300">{error}</span>}
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              alt={`第 ${formula.page ?? '?'} 页公式裁剪图`}
+              className="max-h-56 max-w-full rounded bg-white object-contain"
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

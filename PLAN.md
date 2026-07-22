@@ -1,9 +1,9 @@
-# PaperLens Phase C 质量评估与有限优化
+# PaperLens：MinerU pipeline 薄集成
 
-目标：先用真实样本量化 PDF 公式候选的残缺、召回与门禁问题；报告后才允许有限优化。
+状态：**Epic A、Epic B 已过门；下一步进入 Epic C 交付与运维。** POC B、服务端与扩展真实浏览器闭环均通过冻结 P1，POC C 不启动。完整计划见 `docs/plan-mineru-thin-integration.md`。
 
-- **E1 基线评估**（完成）：13 篇、196 页；157 个候选中 121 个有残缺风险，编号代理召回 20%，ResNet/BERT 为 `none`；确认单行切割、字体信号失效、分栏中心误判和 LLM 上下文掩盖。
-- **E2 低风险实验**（停止）：完成多行公式块重建、栏中心修正、编号锚点关联；编号代理召回 20%→75%，Attention/ResNet 明显改善，BERT 保持无误报。但残缺风险率 77%→52%，未达到 ≤45% 停止线，禁止继续叠加启发式。
-- **E3 技术路线**（等待用户确认）：已提出 arXiv TeX 源优先、PDF glyph 图解析、本地公式 OCR、云 OCR 四条路线；未实施。
+- Epic A（完成）：A1 schema/安全契约；A2 单任务服务与真实三篇/取消复测；A3 原子归一化、上下文、受控裁剪。Python 47/47，65 条金标 P1 通过，234 条候选/裁剪与 POC B 一致。
+- Epic B（完成）：严格 localhost client、上传前 health/版本门禁、Phase C 事务回退、真实进度/取消 UI、展示公式/page+bbox/crop 与 OCR 推导隔离。Attention 真实 Edge 闭环通过：5 条展示公式、108 处行内统计及鉴权裁剪图。
+- Epic C（下一步）：完善 Windows 从零安装/升级/卸载与故障排查，补取消/超时/TTL 后 crop 失效的发布级浏览器矩阵。Docker 非默认，arXiv TeX 仅预留 provider 衔接点。
 
-P0：不引入未批准的 OCR/云服务；不破坏 arXiv HTML/ar5iv；不提交或推送。P1：保留 E2 改进与证据，但不宣称已达到 PDF 公式可用标准。P2：用户选择 E3 路线后另立实现验收。P3：当前不得实施 E3。
+P0：不破坏 HTML/ar5iv、PDF 解读或 Phase C；不伪造进度；PDF/模型/crop/token 不进 Git。P1：所有失败确定性回退，取消无残留，POC B 指标与核心样本不下降。Epic C 仍按相同门禁推进，不以文档或环境困难降低标准。
