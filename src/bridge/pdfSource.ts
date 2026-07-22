@@ -54,6 +54,15 @@ export async function extractPdfFromUrl(
   tabTitle = '',
   options: ExtractPdfOptions = {},
 ): Promise<PaperContent> {
+  return (await extractPdfSourceFromUrl(url, tabTitle, options)).paper;
+}
+
+/** 与增强管线共用同一份下载字节；旧调用仍只取 paper，不改变现有 PDF 路由。 */
+export async function extractPdfSourceFromUrl(
+  url: string,
+  tabTitle = '',
+  options: ExtractPdfOptions = {},
+): Promise<{ paper: PaperContent; buffer: ArrayBuffer }> {
   const kind = classifyPdfUrl(url, tabTitle);
   if (!url || kind === 'none') {
     throw new PdfSourceError('当前标签页不是可识别的 PDF。', 'not-pdf');
@@ -69,7 +78,7 @@ export async function extractPdfFromUrl(
     throw new Error(`获取 PDF 失败：${msg}`);
   }
 
-  return extractPdf(buffer, url, options);
+  return { paper: await extractPdf(buffer, url, options), buffer };
 }
 
 /** 打开当前扩展的详情页，供用户开启「允许访问文件网址」。 */

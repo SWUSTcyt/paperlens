@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperlens.local/schemas/mineru/v1/health.schema.json",
+  "title": "PaperLens MinerU Health v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "service", "serviceVersion", "status", "engine", "limits", "capabilities"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "service": { "const": "paperlens-mineru" },
+    "serviceVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "status": { "type": "string", "enum": ["starting", "ready", "degraded"] },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "backend"],
+      "properties": {
+        "name": { "const": "mineru" },
+        "version": { "const": "3.4.4" },
+        "backend": { "const": "pipeline" }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxPdfBytes", "maxPdfPages", "maxConcurrentJobs", "taskTimeoutSeconds", "resultTtlSeconds"],
+      "properties": {
+        "maxPdfBytes": { "const": 209715200 },
+        "maxPdfPages": { "const": 500 },
+        "maxConcurrentJobs": { "const": 1 },
+        "taskTimeoutSeconds": { "const": 1800 },
+        "resultTtlSeconds": { "const": 86400 }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayFormulas", "inlineFormulaCount", "crops", "truthfulPageProgress"],
+      "properties": {
+        "displayFormulas": { "const": true },
+        "inlineFormulaCount": { "const": true },
+        "crops": { "const": true },
+        "truthfulPageProgress": { "const": false }
+      }
+    }
+  }
+}

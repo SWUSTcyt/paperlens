@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "jobId": "job_01jxyz0123456789abcdef",
+  "engine": {
+    "name": "mineru",
+    "version": "3.4.4",
+    "backend": "pipeline"
+  },
+  "document": {
+    "pageCount": 16,
+    "displayFormulaCount": 1,
+    "inlineFormulaCount": 58
+  },
+  "formulas": [
+    {
+      "id": "formula_p03_001",
+      "latex": "\\operatorname{Attention}(Q,K,V)=\\operatorname{softmax}(QK^T/\\sqrt{d_k})V",
+      "page": 3,
+      "bbox": [100, 210, 900, 320],
+      "cropId": "crop_p03_001",
+      "sectionPath": "3 Model Architecture > 3.2 Attention",
+      "context": "Scaled Dot-Product Attention"
+    }
+  ],
+  "warnings": []
+}

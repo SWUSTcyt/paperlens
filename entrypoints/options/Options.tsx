@@ -10,6 +10,7 @@ import {
 } from '../../src/storage/settings';
 import { chatOnce } from '../../src/bridge/llmBridge';
 import type { ProviderId } from '../../src/llm/types';
+import { MineruClient, MineruClientError } from '../../src/mineru/client';
 
 /**
  * PaperLens 设置页
@@ -23,6 +24,10 @@ export default function Options() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [mineruTest, setMineruTest] = useState<{
+    state: 'idle' | 'testing' | 'ok' | 'error';
+    text?: string;
+  }>({ state: 'idle' });
 
   useEffect(() => {
     loadSettings().then(setSettings).catch((err) => {
@@ -46,6 +51,31 @@ export default function Options() {
       mut(next);
       return next;
     });
+  }
+
+  function updateMineru(mut: (draft: Settings['mineru']) => void) {
+    update((draft) => {
+      mut(draft.mineru);
+      draft.mineru.enabled = false;
+    });
+    setMineruTest({ state: 'idle' });
+  }
+
+  async function handleMineruTest() {
+    if (!settings) return;
+    setMineruTest({ state: 'testing', text: '正在检查服务与 token…' });
+    try {
+      const health = await new MineruClient(settings.mineru).testConnection();
+      setMineruTest({
+        state: 'ok',
+        text: `连接成功：MinerU ${health.engine.version} ${health.engine.backend}`,
+      });
+    } catch (error) {
+      const text = error instanceof MineruClientError
+        ? error.message
+        : '无法测试本地 MinerU 连接。';
+      setMineruTest({ state: 'error', text });
+    }
   }
 
   async function handleSave() {
@@ -136,6 +166,73 @@ export default function Options() {
           binding={settings.derivationModel}
           onChange={(b) => update((s) => { s.derivationModel = b; })}
         />
+      </section>
+
+      <section className="mb-6 space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">本地 MinerU 公式识别</h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            可选的本机增强服务，仅连接 <code>127.0.0.1</code>。默认关闭；PDF 仍会先完成现有解读，服务失败时保留 Phase C 结果。
+            {' '}
+            <a
+              href="https://github.com/SWUSTcyt/paperlens/tree/main/services/mineru"
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-600 hover:underline dark:text-brand-300"
+            >
+              Windows / uv 安装说明
+            </a>
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[9rem_1fr]">
+          <Field label="端口">
+            <input
+              type="number"
+              min={1024}
+              max={65535}
+              value={settings.mineru.port}
+              onChange={(event) => updateMineru((mineru) => { mineru.port = Number(event.target.value); })}
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            />
+          </Field>
+          <Field label="访问 token（仅存浏览器本地）">
+            <input
+              type="password"
+              autoComplete="off"
+              value={settings.mineru.accessToken}
+              onChange={(event) => updateMineru((mineru) => { mineru.accessToken = event.target.value.trim(); })}
+              placeholder="粘贴 paperlens-mineru 首次启动生成的 token"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            />
+          </Field>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void handleMineruTest()}
+            disabled={mineruTest.state === 'testing'}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:border-brand-400 disabled:opacity-60 dark:border-slate-700"
+          >
+            {mineruTest.state === 'testing' ? '测试中…' : '测试连接'}
+          </button>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={settings.mineru.enabled}
+              disabled={!settings.mineru.enabled && mineruTest.state !== 'ok'}
+              onChange={(event) => update((draft) => { draft.mineru.enabled = event.target.checked; })}
+            />
+            对 PDF 启用本地 MinerU
+          </label>
+        </div>
+        {mineruTest.text && (
+          <p className={mineruTest.state === 'ok' ? 'text-xs text-emerald-700' : 'text-xs text-red-700'}>
+            {mineruTest.text}
+          </p>
+        )}
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          已知上限：复杂 BatchNorm 多行块可能漏检，超长 array 可能截断；OCR 结果必须结合裁剪图核对。
+        </p>
       </section>
 
       <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Provider 配置</h2>

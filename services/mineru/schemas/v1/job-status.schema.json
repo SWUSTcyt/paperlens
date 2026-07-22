@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperlens.local/schemas/mineru/v1/job-status.schema.json",
+  "title": "PaperLens MinerU Job Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "jobId", "state", "stage", "stageStartedAt", "elapsedMs"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "jobId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "state": {
+      "type": "string",
+      "enum": ["accepted", "queued", "running", "completed", "cancelling", "cancelled", "failed", "timed-out"]
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["accepted", "queued", "preparing", "loading-model", "parsing", "normalizing", "crops-ready", "completed", "cancelling", "cancelled", "failed", "timed-out"]
+    },
+    "stageStartedAt": { "type": "string", "format": "date-time" },
+    "elapsedMs": { "type": "integer", "minimum": 0 },
+    "queuePosition": { "type": "integer", "minimum": 0 },
+    "result": { "$ref": "job-result.schema.json" },
+    "error": { "$ref": "error.schema.json#/$defs/error" }
+  }
+}

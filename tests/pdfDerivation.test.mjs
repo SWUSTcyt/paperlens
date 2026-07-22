@@ -33,10 +33,32 @@ test('网页 latex 路径保持现有 prompt，不混入 PDF 实验性指令', (
   const prompt = buildDerivationPrompt(arxiv, formula, { context: 'paper context' });
 
   assert.equal(prompt.heuristic, false);
+  assert.equal(prompt.ocr, false);
   assert.equal(prompt.user, buildDerivationUser(arxiv, formula, { context: 'paper context' }));
   assert.match(prompt.user, /```latex/);
   assert.doesNotMatch(prompt.user, /原始 PDF 公式文本/);
   assert.doesNotMatch(prompt.system, /PDF 文本层/);
+});
+
+test('MinerU OCR 使用独立提示且禁止用经典论文记忆静默补齐', () => {
+  const ocrFormula = {
+    ...formula,
+    latex: '\\mathrm{Attention}(Q,K,V)=...',
+    recognitionSource: 'mineru-ocr',
+    bbox: [100, 200, 800, 300],
+  };
+  const prompt = buildDerivationPrompt(paper('ocr'), ocrFormula, { context: 'OCR context' });
+
+  assert.equal(prompt.heuristic, false);
+  assert.equal(prompt.ocr, true);
+  assert.match(prompt.system, /不是作者 TeX 源码/);
+  assert.match(prompt.system, /经典公式记忆/);
+  assert.match(prompt.system, /模型看不到该图片/);
+  assert.match(prompt.user, /MinerU OCR 候选/);
+  assert.match(prompt.user, /100, 200, 800, 300/);
+  assert.match(prompt.user, /不要调用对经典论文的记忆/);
+  assert.match(prompt.user, /OCR context/);
+  assert.doesNotMatch(prompt.user, /原始 PDF 公式文本/);
 });
 
 function paper(formulaSupport) {
@@ -53,7 +75,7 @@ function paper(formulaSupport) {
     references: [],
     extractedAt: 0,
     warnings: [],
-    source: formulaSupport === 'heuristic' ? 'pdf' : 'arxiv',
+    source: formulaSupport === 'latex' ? 'arxiv' : 'pdf',
     formulaSupport,
   };
 }

@@ -1,0 +1,1120 @@
+{
+  "schemaVersion": 1,
+  "coordinateSystem": "top-left-0-1000",
+  "evaluationMode": {
+    "texSourceShortcut": false,
+    "inlineFormulaPolicy": "count-only",
+    "formulaListScope": "display-and-numbered"
+  },
+  "annotation": {
+    "status": "manual-reviewed",
+    "referenceUse": "作者 HTML 仅用于金标，不进入 OCR 引擎输入"
+  },
+  "formulas": [
+    {
+      "id": "1706.03762-p04-e1",
+      "paperId": "1706.03762",
+      "page": 4,
+      "bbox": [
+        344,
+        578,
+        840,
+        629
+      ],
+      "latex": "\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}(\\frac{QK^{T}}{\\sqrt{d_{k}}})V",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "1",
+      "core": true,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1706.03762-p05-e2",
+      "paperId": "1706.03762",
+      "page": 5,
+      "bbox": [
+        355,
+        708,
+        840,
+        740
+      ],
+      "latex": "\\mathrm{FFN}(x)=\\max(0,xW_{1}+b_{1})W_{2}+b_{2}",
+      "display": true,
+      "category": "other",
+      "equationNumber": "2",
+      "core": true,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1412.6980-p03-e1",
+      "paperId": "1412.6980",
+      "page": 3,
+      "bbox": [
+        394,
+        568,
+        840,
+        620
+      ],
+      "latex": "v_t=(1-\\beta_2)\\sum_{i=1}^{t}\\beta_2^{t-i}g_i^2",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1412.6980-p03-e2",
+      "paperId": "1412.6980",
+      "page": 3,
+      "bbox": [
+        360,
+        665,
+        840,
+        719
+      ],
+      "latex": "\\mathbb{E}[v_t]=\\mathbb{E}\\left[(1-\\beta_2)\\sum_{i=1}^{t}\\beta_2^{t-i}g_i^2\\right]",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1412.6980-p03-e3",
+      "paperId": "1412.6980",
+      "page": 3,
+      "bbox": [
+        398,
+        706,
+        840,
+        756
+      ],
+      "latex": "=\\mathbb{E}[g_t^2](1-\\beta_2)\\sum_{i=1}^{t}\\beta_2^{t-i}+\\zeta",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1412.6980-p03-e4",
+      "paperId": "1412.6980",
+      "page": 3,
+      "bbox": [
+        398,
+        736,
+        840,
+        776
+      ],
+      "latex": "=\\mathbb{E}[g_t^2](1-\\beta_2^t)+\\zeta",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1412.6980-p04-e5",
+      "paperId": "1412.6980",
+      "page": 4,
+      "bbox": [
+        387,
+        254,
+        840,
+        306
+      ],
+      "latex": "R(T)=\\sum_{t=1}^{T}\\left[f_t(\\theta_t)-f_t(\\theta^*)\\right]",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1412.6980-p08-e6",
+      "paperId": "1412.6980",
+      "page": 8,
+      "bbox": [
+        378,
+        824,
+        840,
+        866
+      ],
+      "latex": "v_t=\\beta_2^p v_{t-1}+(1-\\beta_2^p)|g_t|^p",
+      "display": true,
+      "category": "other",
+      "equationNumber": "6",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2006.11239-p02-e1",
+      "paperId": "2006.11239",
+      "page": 2,
+      "bbox": [
+        186,
+        611,
+        839,
+        668
+      ],
+      "latex": "p_\\theta(\\mathbf{x}_{0:T})=p(\\mathbf{x}_T)\\prod_{t=1}^{T}p_\\theta(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t),\\quad p_\\theta(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)=\\mathcal{N}(\\mathbf{x}_{t-1};\\boldsymbol{\\mu}_\\theta(\\mathbf{x}_t,t),\\boldsymbol{\\Sigma}_\\theta(\\mathbf{x}_t,t))",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2006.11239-p02-e2",
+      "paperId": "2006.11239",
+      "page": 2,
+      "bbox": [
+        232,
+        700,
+        839,
+        757
+      ],
+      "latex": "q(\\mathbf{x}_{1:T}\\mid\\mathbf{x}_0)=\\prod_{t=1}^{T}q(\\mathbf{x}_t\\mid\\mathbf{x}_{t-1}),\\quad q(\\mathbf{x}_t\\mid\\mathbf{x}_{t-1})=\\mathcal{N}(\\mathbf{x}_t;\\sqrt{1-\\beta_t}\\mathbf{x}_{t-1},\\beta_t\\mathbf{I})",
+      "display": true,
+      "category": "root",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2006.11239-p02-e3",
+      "paperId": "2006.11239",
+      "page": 2,
+      "bbox": [
+        169,
+        767,
+        839,
+        822
+      ],
+      "latex": "\\mathbb{E}[-\\log p_\\theta(\\mathbf{x}_0)]\\leq\\mathbb{E}_q\\left[-\\log\\frac{p_\\theta(\\mathbf{x}_{0:T})}{q(\\mathbf{x}_{1:T}\\mid\\mathbf{x}_0)}\\right]=\\mathbb{E}_q\\left[-\\log p(\\mathbf{x}_T)-\\sum_{t\\geq1}\\log\\frac{p_\\theta(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)}{q(\\mathbf{x}_t\\mid\\mathbf{x}_{t-1})}\\right]=L",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2006.11239-p02-e4",
+      "paperId": "2006.11239",
+      "page": 2,
+      "bbox": [
+        161,
+        865,
+        839,
+        918
+      ],
+      "latex": "q(\\mathbf{x}_t\\mid\\mathbf{x}_0)=\\mathcal{N}(\\mathbf{x}_t;\\sqrt{\\bar{\\alpha}_t}\\mathbf{x}_0,(1-\\bar{\\alpha}_t)\\mathbf{I})",
+      "display": true,
+      "category": "root",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2006.11239-p03-e5",
+      "paperId": "2006.11239",
+      "page": 3,
+      "bbox": [
+        176,
+        117,
+        839,
+        176
+      ],
+      "latex": "\\mathbb{E}_q\\left[D_{\\mathrm{KL}}(q(\\mathbf{x}_T\\mid\\mathbf{x}_0)\\Vert p(\\mathbf{x}_T))+\\sum_{t>1}D_{\\mathrm{KL}}(q(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t,\\mathbf{x}_0)\\Vert p_\\theta(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t))-\\log p_\\theta(\\mathbf{x}_0\\mid\\mathbf{x}_1)\\right]",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2006.11239-p03-e6",
+      "paperId": "2006.11239",
+      "page": 3,
+      "bbox": [
+        180,
+        205,
+        840,
+        260
+      ],
+      "latex": "q(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t,\\mathbf{x}_0)=\\mathcal{N}(\\mathbf{x}_{t-1};\\tilde{\\boldsymbol{\\mu}}_t(\\mathbf{x}_t,\\mathbf{x}_0),\\tilde{\\beta}_t\\mathbf{I})",
+      "display": true,
+      "category": "other",
+      "equationNumber": "6",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2006.11239-p03-e7",
+      "paperId": "2006.11239",
+      "page": 3,
+      "bbox": [
+        170,
+        235,
+        840,
+        300
+      ],
+      "latex": "\\tilde{\\boldsymbol{\\mu}}_t(\\mathbf{x}_t,\\mathbf{x}_0)=\\frac{\\sqrt{\\bar{\\alpha}_{t-1}}\\beta_t}{1-\\bar{\\alpha}_t}\\mathbf{x}_0+\\frac{\\sqrt{\\alpha_t}(1-\\bar{\\alpha}_{t-1})}{1-\\bar{\\alpha}_t}\\mathbf{x}_t,\\quad\\tilde{\\beta}_t=\\frac{1-\\bar{\\alpha}_{t-1}}{1-\\bar{\\alpha}_t}\\beta_t",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "7",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.6114-p03-e1",
+      "paperId": "1312.6114",
+      "page": 3,
+      "bbox": [
+        160,
+        315,
+        839,
+        387
+      ],
+      "latex": "\\log p_\\theta(\\mathbf{x}^{(i)})=D_{\\mathrm{KL}}(q_\\phi(\\mathbf{z}\\mid\\mathbf{x}^{(i)})\\Vert p_\\theta(\\mathbf{z}\\mid\\mathbf{x}^{(i)}))+\\mathcal{L}(\\theta,\\phi;\\mathbf{x}^{(i)})",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.6114-p03-e2",
+      "paperId": "1312.6114",
+      "page": 3,
+      "bbox": [
+        160,
+        384,
+        839,
+        449
+      ],
+      "latex": "\\log p_\\theta(\\mathbf{x}^{(i)})\\geq\\mathcal{L}(\\theta,\\phi;\\mathbf{x}^{(i)})=\\mathbb{E}_{q_\\phi(\\mathbf{z}\\mid\\mathbf{x}^{(i)})}[-\\log q_\\phi(\\mathbf{z}\\mid\\mathbf{x}^{(i)})+\\log p_\\theta(\\mathbf{x}^{(i)},\\mathbf{z})]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.6114-p03-e3",
+      "paperId": "1312.6114",
+      "page": 3,
+      "bbox": [
+        160,
+        429,
+        839,
+        494
+      ],
+      "latex": "\\mathcal{L}(\\theta,\\phi;\\mathbf{x}^{(i)})=-D_{\\mathrm{KL}}(q_\\phi(\\mathbf{z}\\mid\\mathbf{x}^{(i)})\\Vert p_\\theta(\\mathbf{z}))+\\mathbb{E}_{q_\\phi(\\mathbf{z}\\mid\\mathbf{x}^{(i)})}[\\log p_\\theta(\\mathbf{x}^{(i)}\\mid\\mathbf{z})]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.6114-p03-e4",
+      "paperId": "1312.6114",
+      "page": 3,
+      "bbox": [
+        161,
+        691,
+        840,
+        759
+      ],
+      "latex": "\\tilde{\\mathbf{z}}=g_\\phi(\\boldsymbol{\\epsilon},\\mathbf{x}),\\quad\\boldsymbol{\\epsilon}\\sim p(\\boldsymbol{\\epsilon})",
+      "display": true,
+      "category": "other",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.6114-p03-e5",
+      "paperId": "1312.6114",
+      "page": 3,
+      "bbox": [
+        173,
+        774,
+        839,
+        831
+      ],
+      "latex": "\\mathbb{E}_{q_\\phi(\\mathbf{z}\\mid\\mathbf{x}^{(i)})}[f(\\mathbf{z})]=\\mathbb{E}_{p(\\boldsymbol{\\epsilon})}[f(g_\\phi(\\boldsymbol{\\epsilon},\\mathbf{x}^{(i)}))]\\simeq\\frac{1}{L}\\sum_{l=1}^{L}f(g_\\phi(\\boldsymbol{\\epsilon}^{(l)},\\mathbf{x}^{(i)})),\\quad\\boldsymbol{\\epsilon}^{(l)}\\sim p(\\boldsymbol{\\epsilon})",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.6114-p03-e6",
+      "paperId": "1312.6114",
+      "page": 3,
+      "bbox": [
+        180,
+        835,
+        840,
+        925
+      ],
+      "latex": "\\widetilde{\\mathcal{L}}^{A}(\\theta,\\phi;\\mathbf{x}^{(i)})=\\frac{1}{L}\\sum_{l=1}^{L}\\left(\\log p_\\theta(\\mathbf{x}^{(i)},\\mathbf{z}^{(i,l)})-\\log q_\\phi(\\mathbf{z}^{(i,l)}\\mid\\mathbf{x}^{(i)})\\right)",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "6",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1512.03385-p03-e1",
+      "paperId": "1512.03385",
+      "page": 3,
+      "bbox": [
+        186,
+        781,
+        483,
+        814
+      ],
+      "latex": "\\mathbf{y}=\\mathcal{F}(\\mathbf{x},\\{W_{i}\\})+\\mathbf{x}.",
+      "display": true,
+      "category": "other",
+      "equationNumber": "1",
+      "core": true,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1512.03385-p03-e2",
+      "paperId": "1512.03385",
+      "page": 3,
+      "bbox": [
+        408,
+        313,
+        906,
+        375
+      ],
+      "latex": "\\mathbf{y}=\\mathcal{F}(\\mathbf{x},\\{W_{i}\\})+W_{s}\\mathbf{x}.",
+      "display": true,
+      "category": "other",
+      "equationNumber": "2",
+      "core": true,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1502.03167-p01-ebn-1",
+      "paperId": "1502.03167",
+      "page": 1,
+      "bbox": [
+        190,
+        755,
+        500,
+        815
+      ],
+      "latex": "\\Theta=\\arg\\min_{\\Theta}\\frac{1}{N}\\sum_{i=1}^{N}\\ell(x_i,\\Theta)",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "BN-1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1502.03167-p01-ebn-2",
+      "paperId": "1502.03167",
+      "page": 1,
+      "bbox": [
+        590,
+        595,
+        850,
+        645
+      ],
+      "latex": "\\ell=F_2(F_1(u,\\Theta_1),\\Theta_2)",
+      "display": true,
+      "category": "other",
+      "equationNumber": "BN-2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1502.03167-p03-ebn-3",
+      "paperId": "1502.03167",
+      "page": 3,
+      "bbox": [
+        100,
+        705,
+        430,
+        775
+      ],
+      "latex": "\\widehat{x}^{(k)}=\\frac{x^{(k)}-\\mathbb{E}[x^{(k)}]}{\\sqrt{\\operatorname{Var}[x^{(k)}]}}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "BN-3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1502.03167-p03-ebn-4",
+      "paperId": "1502.03167",
+      "page": 3,
+      "bbox": [
+        500,
+        610,
+        900,
+        855
+      ],
+      "latex": "\\begin{aligned}\\mu_{\\mathcal{B}}&=\\frac{1}{m}\\sum_{i=1}^{m}x_i\\\\\\sigma_{\\mathcal{B}}^2&=\\frac{1}{m}\\sum_{i=1}^{m}(x_i-\\mu_{\\mathcal{B}})^2\\\\\\widehat{x}_i&=\\frac{x_i-\\mu_{\\mathcal{B}}}{\\sqrt{\\sigma_{\\mathcal{B}}^2+\\epsilon}}\\\\y_i&=\\gamma\\widehat{x}_i+\\beta\\end{aligned}",
+      "display": true,
+      "category": "matrix-or-multiline",
+      "equationNumber": "BN-4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1502.03167-p04-ebn-5",
+      "paperId": "1502.03167",
+      "page": 4,
+      "bbox": [
+        100,
+        450,
+        505,
+        660
+      ],
+      "latex": "\\begin{aligned}\\frac{\\partial\\ell}{\\partial\\widehat{x}_i}&=\\frac{\\partial\\ell}{\\partial y_i}\\gamma\\\\\\frac{\\partial\\ell}{\\partial\\sigma_{\\mathcal{B}}^2}&=\\sum_{i=1}^{m}\\frac{\\partial\\ell}{\\partial\\widehat{x}_i}(x_i-\\mu_{\\mathcal{B}})\\left(-\\frac{1}{2}\\right)(\\sigma_{\\mathcal{B}}^2+\\epsilon)^{-3/2}\\\\\\frac{\\partial\\ell}{\\partial\\mu_{\\mathcal{B}}}&=\\sum_{i=1}^{m}\\frac{\\partial\\ell}{\\partial\\widehat{x}_i}\\frac{-1}{\\sqrt{\\sigma_{\\mathcal{B}}^2+\\epsilon}}+\\frac{\\partial\\ell}{\\partial\\sigma_{\\mathcal{B}}^2}\\frac{\\sum_{i=1}^{m}-2(x_i-\\mu_{\\mathcal{B}})}{m}\\\\\\frac{\\partial\\ell}{\\partial x_i}&=\\frac{\\partial\\ell}{\\partial\\widehat{x}_i}\\frac{1}{\\sqrt{\\sigma_{\\mathcal{B}}^2+\\epsilon}}+\\frac{\\partial\\ell}{\\partial\\sigma_{\\mathcal{B}}^2}\\frac{2(x_i-\\mu_{\\mathcal{B}})}{m}+\\frac{\\partial\\ell}{\\partial\\mu_{\\mathcal{B}}}\\frac{1}{m}\\end{aligned}",
+      "display": true,
+      "category": "matrix-or-multiline",
+      "equationNumber": "BN-5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1607.06450-p02-e1",
+      "paperId": "1607.06450",
+      "page": 2,
+      "bbox": [
+        160,
+        305,
+        840,
+        375
+      ],
+      "latex": "a_i^l=(w_i^l)^\\top h^l,\\qquad h_i^{l+1}=f(a_i^l+b_i^l)",
+      "display": true,
+      "category": "other",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1607.06450-p02-e2",
+      "paperId": "1607.06450",
+      "page": 2,
+      "bbox": [
+        160,
+        485,
+        840,
+        565
+      ],
+      "latex": "\\bar{a}_i^l=\\frac{g_i^l}{\\sigma_i^l}(a_i^l-\\mu_i^l),\\qquad\\mu_i^l=\\mathbb{E}_{\\mathbf{x}\\sim P(\\mathbf{x})}[a_i^l],\\qquad\\sigma_i^l=\\sqrt{\\mathbb{E}_{\\mathbf{x}\\sim P(\\mathbf{x})}[(a_i^l-\\mu_i^l)^2]}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1607.06450-p02-e3",
+      "paperId": "1607.06450",
+      "page": 2,
+      "bbox": [
+        330,
+        785,
+        840,
+        850
+      ],
+      "latex": "\\mu^l=\\frac{1}{H}\\sum_{i=1}^{H}a_i^l,\\qquad\\sigma^l=\\sqrt{\\frac{1}{H}\\sum_{i=1}^{H}(a_i^l-\\mu^l)^2}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1607.06450-p03-e4",
+      "paperId": "1607.06450",
+      "page": 3,
+      "bbox": [
+        160,
+        300,
+        840,
+        390
+      ],
+      "latex": "\\mathbf{h}^t=f\\left[\\frac{\\mathbf{g}}{\\sigma^t}\\odot(\\mathbf{a}^t-\\mu^t)+\\mathbf{b}\\right],\\quad\\mu^t=\\frac{1}{H}\\sum_{i=1}^{H}a_i^t,\\quad\\sigma^t=\\sqrt{\\frac{1}{H}\\sum_{i=1}^{H}(a_i^t-\\mu^t)^2}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1607.06450-p03-e5",
+      "paperId": "1607.06450",
+      "page": 3,
+      "bbox": [
+        250,
+        815,
+        840,
+        890
+      ],
+      "latex": "h_i=f\\left(\\frac{g_i}{\\sigma_i}(a_i-\\mu_i)+b_i\\right)",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1607.06450-p04-e6",
+      "paperId": "1607.06450",
+      "page": 4,
+      "bbox": [
+        160,
+        320,
+        840,
+        450
+      ],
+      "latex": "\\mathbf{h}'=f\\left[\\frac{\\mathbf{g}}{\\sigma'}(W'\\mathbf{x}-\\mu')+\\mathbf{b}\\right]=f\\left[\\frac{\\mathbf{g}}{\\sigma'}((\\delta W+\\mathbf{1}\\gamma^\\top)\\mathbf{x}-\\mu')+\\mathbf{b}\\right]=f\\left[\\frac{\\mathbf{g}}{\\sigma}(W\\mathbf{x}-\\mu)+\\mathbf{b}\\right]=\\mathbf{h}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "6",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2106.09685-p03-e1",
+      "paperId": "2106.09685",
+      "page": 3,
+      "bbox": [
+        365,
+        134,
+        839,
+        195
+      ],
+      "latex": "\\max_{\\Phi}\\sum_{(x,y)\\in\\mathcal{Z}}\\sum_{t=1}^{|y|}\\log P_{\\Phi}(y_t\\mid x,y_{<t})",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2106.09685-p03-e2",
+      "paperId": "2106.09685",
+      "page": 3,
+      "bbox": [
+        337,
+        301,
+        839,
+        362
+      ],
+      "latex": "\\max_{\\Theta}\\sum_{(x,y)\\in\\mathcal{Z}}\\sum_{t=1}^{|y|}\\log p_{\\Phi_0+\\Delta\\Phi(\\Theta)}(y_t\\mid x,y_{<t})",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2106.09685-p04-e3",
+      "paperId": "2106.09685",
+      "page": 4,
+      "bbox": [
+        161,
+        551,
+        839,
+        604
+      ],
+      "latex": "h=W_{0}x+\\Delta Wx=W_{0}x+BAx",
+      "display": true,
+      "category": "other",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "2106.09685-p11-e4",
+      "paperId": "2106.09685",
+      "page": 11,
+      "bbox": [
+        318,
+        196,
+        839,
+        249
+      ],
+      "latex": "\\phi(A_{r=8},A_{r=64},i,j)=\\frac{||U_{A_{r=8}}^{i\\top}U_{A_{r=64}}^{j}||_{F}^{2}}{\\min(i,j)}\\in[0,1]",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.5602-p03-e1",
+      "paperId": "1312.5602",
+      "page": 3,
+      "bbox": [
+        230,
+        105,
+        850,
+        175
+      ],
+      "latex": "Q^*(s,a)=\\mathbb{E}_{s'\\sim\\mathcal{E}}[r+\\gamma\\max_{a'}Q^*(s',a')\\mid s,a]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.5602-p03-e2",
+      "paperId": "1312.5602",
+      "page": 3,
+      "bbox": [
+        230,
+        305,
+        850,
+        370
+      ],
+      "latex": "L_i(\\theta_i)=\\mathbb{E}_{s,a\\sim\\rho(\\cdot)}[(y_i-Q(s,a;\\theta_i))^2]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1312.5602-p03-e3",
+      "paperId": "1312.5602",
+      "page": 3,
+      "bbox": [
+        180,
+        425,
+        850,
+        500
+      ],
+      "latex": "\\nabla_{\\theta_i}L_i(\\theta_i)=\\mathbb{E}_{s,a\\sim\\rho(\\cdot),s'\\sim\\mathcal{E}}[(r+\\gamma\\max_{a'}Q(s',a';\\theta_{i-1})-Q(s,a;\\theta_i))\\nabla_{\\theta_i}Q(s,a;\\theta_i)]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1406.2661-p03-e1",
+      "paperId": "1406.2661",
+      "page": 3,
+      "bbox": [
+        190,
+        120,
+        850,
+        180
+      ],
+      "latex": "\\min_{G}\\max_{D}V(D,G)=\\mathbb{E}_{\\bm{x}\\sim p_{\\text{data}}(\\bm{x})}[\\log D(\\bm{x})]+\\mathbb{E}_{\\bm{z}\\sim p_{\\bm{z}}(\\bm{z})}[\\log(1-D(G(\\bm{z})))].",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1406.2661-p04-e2",
+      "paperId": "1406.2661",
+      "page": 4,
+      "bbox": [
+        330,
+        495,
+        850,
+        570
+      ],
+      "latex": "D^{*}_{G}(\\bm{x})=\\frac{p_{\\text{data}}(\\bm{x})}{p_{\\text{data}}(\\bm{x})+p_{g}(\\bm{x})}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1406.2661-p04-e3",
+      "paperId": "1406.2661",
+      "page": 4,
+      "bbox": [
+        190,
+        585,
+        850,
+        705
+      ],
+      "latex": "V(G,D)=\\int_{\\mathbf{x}}p_{\\mathrm{data}}(\\mathbf{x})\\log D(\\mathbf{x})+p_g(\\mathbf{x})\\log(1-D(\\mathbf{x}))\\,d\\mathbf{x}",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1406.2661-p04-e4",
+      "paperId": "1406.2661",
+      "page": 4,
+      "bbox": [
+        190,
+        765,
+        850,
+        955
+      ],
+      "latex": "C(G)=\\max_D V(G,D)=\\mathbb{E}_{\\mathbf{x}\\sim p_{\\mathrm{data}}}[\\log D_G^*(\\mathbf{x})]+\\mathbb{E}_{\\mathbf{z}\\sim p_{\\mathbf{z}}}[\\log(1-D_G^*(G(\\mathbf{z})))]=\\mathbb{E}_{\\mathbf{x}\\sim p_{\\mathrm{data}}}[\\log D_G^*(\\mathbf{x})]+\\mathbb{E}_{\\mathbf{x}\\sim p_g}[\\log(1-D_G^*(\\mathbf{x}))]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1406.2661-p05-e5",
+      "paperId": "1406.2661",
+      "page": 5,
+      "bbox": [
+        190,
+        215,
+        850,
+        295
+      ],
+      "latex": "C(G)=-\\log(4)+KL\\left(p_{\\text{data}}\\left\\|\\frac{p_{\\text{data}}+p_{g}}{2}\\right.\\right)+KL\\left(p_{g}\\left\\|\\frac{p_{\\text{data}}+p_{g}}{2}\\right.\\right)",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1707.06347-p02-e1",
+      "paperId": "1707.06347",
+      "page": 2,
+      "bbox": [
+        260,
+        215,
+        850,
+        275
+      ],
+      "latex": "\\hat{g}=\\hat{\\mathbb{E}}_t[\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)\\hat{A}_t]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1707.06347-p02-e2",
+      "paperId": "1707.06347",
+      "page": 2,
+      "bbox": [
+        260,
+        340,
+        850,
+        410
+      ],
+      "latex": "L^{PG}(\\theta)=\\hat{\\mathbb{E}}_t[\\log\\pi_\\theta(a_t\\mid s_t)\\hat{A}_t]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1707.06347-p02-e3",
+      "paperId": "1707.06347",
+      "page": 2,
+      "bbox": [
+        250,
+        520,
+        850,
+        575
+      ],
+      "latex": "\\underset{\\theta}{\\operatorname{maximize}}\\ \\hat{\\mathbb{E}}_t\\left[\\frac{\\pi_\\theta(a_t\\mid s_t)}{\\pi_{\\theta_{\\mathrm{old}}}(a_t\\mid s_t)}\\hat{A}_t\\right]",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1707.06347-p02-e4",
+      "paperId": "1707.06347",
+      "page": 2,
+      "bbox": [
+        250,
+        580,
+        850,
+        625
+      ],
+      "latex": "\\operatorname{subject\\ to}\\ \\hat{\\mathbb{E}}_t[\\mathrm{KL}[\\pi_{\\theta_{\\mathrm{old}}}(\\cdot\\mid s_t),\\pi_\\theta(\\cdot\\mid s_t)]]\\leq\\delta",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1707.06347-p02-e5",
+      "paperId": "1707.06347",
+      "page": 2,
+      "bbox": [
+        230,
+        675,
+        850,
+        745
+      ],
+      "latex": "\\underset{\\theta}{\\operatorname{maximize}}\\ \\hat{\\mathbb{E}}_t\\left[\\frac{\\pi_\\theta(a_t\\mid s_t)}{\\pi_{\\theta_{\\mathrm{old}}}(a_t\\mid s_t)}\\hat{A}_t-\\beta\\,\\mathrm{KL}[\\pi_{\\theta_{\\mathrm{old}}}(\\cdot\\mid s_t),\\pi_\\theta(\\cdot\\mid s_t)]\\right]",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1707.06347-p03-e6",
+      "paperId": "1707.06347",
+      "page": 3,
+      "bbox": [
+        230,
+        180,
+        850,
+        250
+      ],
+      "latex": "L^{CPI}(\\theta)=\\hat{\\mathbb{E}}_t\\left[\\frac{\\pi_\\theta(a_t\\mid s_t)}{\\pi_{\\theta_{\\mathrm{old}}}(a_t\\mid s_t)}\\hat{A}_t\\right]=\\hat{\\mathbb{E}}_t[r_t(\\theta)\\hat{A}_t]",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "6",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1707.06347-p03-e7",
+      "paperId": "1707.06347",
+      "page": 3,
+      "bbox": [
+        220,
+        315,
+        850,
+        385
+      ],
+      "latex": "L^{CLIP}(\\theta)=\\hat{\\mathbb{E}}_t[\\min(r_t(\\theta)\\hat{A}_t,\\operatorname{clip}(r_t(\\theta),1-\\epsilon,1+\\epsilon)\\hat{A}_t)]",
+      "display": true,
+      "category": "probability-or-loss",
+      "equationNumber": "7",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p01-e1",
+      "paperId": "1806.07366",
+      "page": 1,
+      "bbox": [
+        220,
+        555,
+        540,
+        615
+      ],
+      "latex": "\\mathbf{h}_{t+1}=\\mathbf{h}_t+f(\\mathbf{h}_t,\\theta_t)",
+      "display": true,
+      "category": "other",
+      "equationNumber": "1",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p01-e2",
+      "paperId": "1806.07366",
+      "page": 1,
+      "bbox": [
+        210,
+        700,
+        540,
+        775
+      ],
+      "latex": "\\frac{d\\mathbf{h}(t)}{dt}=f(\\mathbf{h}(t),t,\\theta)",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "2",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p02-e3",
+      "paperId": "1806.07366",
+      "page": 2,
+      "bbox": [
+        190,
+        485,
+        850,
+        560
+      ],
+      "latex": "L(\\mathbf{z}(t_1))=L\\left(\\mathbf{z}(t_0)+\\int_{t_0}^{t_1}f(\\mathbf{z}(t),t,\\theta)\\,dt\\right)=L(\\operatorname{ODESolve}(\\mathbf{z}(t_0),f,t_0,t_1,\\theta))",
+      "display": true,
+      "category": "large-operator",
+      "equationNumber": "3",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p02-e4",
+      "paperId": "1806.07366",
+      "page": 2,
+      "bbox": [
+        500,
+        600,
+        850,
+        700
+      ],
+      "latex": "\\frac{d\\mathbf{a}(t)}{dt}=-\\mathbf{a}(t)^\\top\\frac{\\partial f(\\mathbf{z}(t),t,\\theta)}{\\partial\\mathbf{z}}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "4",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p02-e5",
+      "paperId": "1806.07366",
+      "page": 2,
+      "bbox": [
+        490,
+        795,
+        850,
+        885
+      ],
+      "latex": "\\frac{dL}{d\\theta}=-\\int_{t_1}^{t_0}\\mathbf{a}(t)^\\top\\frac{\\partial f(\\mathbf{z}(t),t,\\theta)}{\\partial\\theta}\\,dt",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "5",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p04-e6",
+      "paperId": "1806.07366",
+      "page": 4,
+      "bbox": [
+        230,
+        465,
+        850,
+        555
+      ],
+      "latex": "\\mathbf{z}_1=f(\\mathbf{z}_0)\\Longrightarrow\\log p(\\mathbf{z}_1)=\\log p(\\mathbf{z}_0)-\\log\\left|\\det\\frac{\\partial f}{\\partial\\mathbf{z}_0}\\right|",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "6",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p04-e7",
+      "paperId": "1806.07366",
+      "page": 4,
+      "bbox": [
+        190,
+        525,
+        850,
+        615
+      ],
+      "latex": "\\mathbf{z}(t+1)=\\mathbf{z}(t)+u h(w^\\top\\mathbf{z}(t)+b),\\quad\\log p(\\mathbf{z}(t+1))=\\log p(\\mathbf{z}(t))-\\log\\left|1+u^\\top\\frac{\\partial h}{\\partial\\mathbf{z}}\\right|",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "7",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p04-e8",
+      "paperId": "1806.07366",
+      "page": 4,
+      "bbox": [
+        270,
+        710,
+        850,
+        805
+      ],
+      "latex": "\\frac{\\partial\\log p(\\mathbf{z}(t))}{\\partial t}=-\\operatorname{tr}\\left(\\frac{df}{d\\mathbf{z}(t)}\\right)",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "8",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p04-e9",
+      "paperId": "1806.07366",
+      "page": 4,
+      "bbox": [
+        260,
+        820,
+        850,
+        920
+      ],
+      "latex": "\\frac{d\\mathbf{z}(t)}{dt}=u h(w^\\top\\mathbf{z}(t)+b),\\quad\\frac{\\partial\\log p(\\mathbf{z}(t))}{\\partial t}=-u^\\top\\frac{\\partial h}{\\partial\\mathbf{z}(t)}",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "9",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p05-e10",
+      "paperId": "1806.07366",
+      "page": 5,
+      "bbox": [
+        260,
+        150,
+        850,
+        240
+      ],
+      "latex": "\\frac{d\\mathbf{z}(t)}{dt}=\\sum_{n=1}^{M}f_n(\\mathbf{z}(t)),\\quad\\frac{d\\log p(\\mathbf{z}(t))}{dt}=\\sum_{n=1}^{M}\\operatorname{tr}\\left(\\frac{\\partial f_n}{\\partial\\mathbf{z}}\\right)",
+      "display": true,
+      "category": "fraction",
+      "equationNumber": "10",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p06-e11",
+      "paperId": "1806.07366",
+      "page": 6,
+      "bbox": [
+        260,
+        585,
+        850,
+        640
+      ],
+      "latex": "\\mathbf{z}_{t_0}\\sim p(\\mathbf{z}_{t_0})",
+      "display": true,
+      "category": "other",
+      "equationNumber": "11",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    },
+    {
+      "id": "1806.07366-p06-e12",
+      "paperId": "1806.07366",
+      "page": 6,
+      "bbox": [
+        250,
+        610,
+        850,
+        670
+      ],
+      "latex": "\\mathbf{z}_{t_1},\\mathbf{z}_{t_2},\\ldots,\\mathbf{z}_{t_N}=\\operatorname{ODESolve}(\\mathbf{z}_{t_0},f,\\theta_f,t_0,\\ldots,t_N)",
+      "display": true,
+      "category": "other",
+      "equationNumber": "12",
+      "core": false,
+      "reference": "author-reference-manual-reviewed"
+    }
+  ]
+}

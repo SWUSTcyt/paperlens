@@ -29,6 +29,15 @@ PDF 实验性公式规则：
 4. 行尾形如 (3) 的内容通常是公式编号，不应还原成公式的一部分。
 5. 后续四节只基于已经声明的还原结果推导；无法可靠还原时应停止推导，并建议用户对照原 PDF。`;
 
+const MINERU_OCR_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+MinerU OCR 公式规则：
+1. 用户提供的是 MinerU 从 PDF 图像识别出的 LaTeX，不是作者 TeX 源码；它可能漏检、错符号或截断。
+2. 不得凭论文标题、经典公式记忆或外部知识静默替换输入，也不得把记忆中的标准公式冒充本次 OCR 证据。
+3. 在“公式还原”中先逐字复述收到的 OCR LaTeX，再列出语法或语义上可疑的位置；修正建议必须显式标为“建议”，并保留不确定性。
+4. 用户可在界面中查看 page+bbox 裁剪图，但模型看不到该图片；不得声称已经核对图片。
+5. 若 OCR 明显截断或信息不足，应停止后续推导并请用户对照裁剪图，不要用模型记忆补齐。`;
+
 export function buildDerivationSystem(): string {
   return SYSTEM_PROMPT;
 }
@@ -42,6 +51,7 @@ export interface BuiltDerivationPrompt {
   system: string;
   user: string;
   heuristic: boolean;
+  ocr: boolean;
 }
 
 /** 按公式来源选择 prompt；网页真 LaTeX 继续走原模板。 */
@@ -55,13 +65,54 @@ export function buildDerivationPrompt(
       system: PDF_HEURISTIC_SYSTEM_PROMPT,
       user: buildPdfHeuristicDerivationUser(paper, formula, opts),
       heuristic: true,
+      ocr: false,
+    };
+  }
+  if (paper.formulaSupport === 'ocr' || formula.recognitionSource === 'mineru-ocr') {
+    return {
+      system: MINERU_OCR_SYSTEM_PROMPT,
+      user: buildMineruOcrDerivationUser(paper, formula, opts),
+      heuristic: false,
+      ocr: true,
     };
   }
   return {
     system: buildDerivationSystem(),
     user: buildDerivationUser(paper, formula, opts),
     heuristic: false,
+    ocr: false,
   };
+}
+
+function buildMineruOcrDerivationUser(
+  paper: PaperContent,
+  formula: Formula,
+  opts: BuildDerivationUserOptions,
+): string {
+  const lines: string[] = [];
+  lines.push('# 论文信息');
+  if (paper.title) lines.push(`- 标题：${paper.title}`);
+  if (paper.categories.length) lines.push(`- 分类：${paper.categories.join(', ')}`);
+  lines.push('');
+  lines.push('# MinerU OCR 候选');
+  lines.push(`- 编号：${formula.id}`);
+  if (formula.sectionPath) lines.push(`- 章节：${formula.sectionPath}`);
+  if (formula.page) lines.push(`- 页码：第 ${formula.page} 页`);
+  if (formula.bbox) lines.push(`- bbox（0–1000）：${formula.bbox.join(', ')}`);
+  lines.push('- 来源：MinerU 3.4.4 pipeline；不是作者 TeX 源码');
+  lines.push('');
+  lines.push('```latex');
+  lines.push(formula.latex);
+  lines.push('```');
+  if (opts.context?.trim()) {
+    lines.push('');
+    lines.push('# 邻近正文（来自 PDF 结构解析）');
+    lines.push(opts.context.trim());
+  }
+  lines.push('');
+  lines.push('# 任务');
+  lines.push('严格按 System 指示审查这份 OCR LaTeX。不要调用对经典论文的记忆来静默补齐；发现截断或歧义时停止推导并提示对照裁剪图。');
+  return lines.join('\n');
 }
 
 export function buildDerivationUser(

@@ -35,6 +35,8 @@ export default defineConfig({
       'https://api.deepseek.com/*',
       'https://api.openai.com/*',
       'https://api.anthropic.com/*',
+      // 可选本地 MinerU 薄服务；客户端仍会把 host 硬限制为 127.0.0.1。
+      'http://127.0.0.1/*',
     ],
     // 任意在线 PDF 只在用户点击解析时按当前主机申请，不产生常驻全网权限
     optional_host_permissions: ['http://*/*', 'https://*/*'],

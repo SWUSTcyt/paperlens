@@ -64,8 +64,13 @@ export function buildMarkdown({ paper, summary, derivations }: BuildMarkdownInpu
   lines.push('## 公式推导');
   lines.push('');
   const heuristicFormulas = paper.formulaSupport === 'heuristic';
+  const ocrFormulas = paper.formulaSupport === 'ocr';
   if (heuristicFormulas) {
     lines.push('> **AI 识别，实验性**：公式来自 PDF 文本层，可能缺符号、错位或误识别；请对照原 PDF。');
+    lines.push('');
+  }
+  if (ocrFormulas) {
+    lines.push('> **MinerU 本地 OCR**：以下 LaTeX 是可核对的识别结果，不是作者 TeX 源码；可能漏检、错符号或截断，请结合原 PDF 裁剪图核对。');
     lines.push('');
   }
   const doneFormulas = paper.formulas.filter((f) => derivations[f.id]?.content);
@@ -78,7 +83,7 @@ export function buildMarkdown({ paper, summary, derivations }: BuildMarkdownInpu
     for (const f of doneFormulas) {
       lines.push(`### 公式 #${f.id}${f.sectionPath ? `（章节：${f.sectionPath}）` : ''}`);
       lines.push('');
-      lines.push(formulaBlock(f, heuristicFormulas));
+      lines.push(formulaBlock(f, heuristicFormulas, ocrFormulas));
       const d = derivations[f.id]!;
       const providerLine = providerLabel(d.providerId, d.model);
       if (providerLine) {
@@ -102,7 +107,7 @@ export function buildMarkdown({ paper, summary, derivations }: BuildMarkdownInpu
         `- **#${f.id}** ${f.sectionPath ? `_${f.sectionPath}_ ` : ''}${has ? '（已推导）' : ''}`,
       );
       lines.push('');
-      lines.push(formulaBlock(f, heuristicFormulas));
+      lines.push(formulaBlock(f, heuristicFormulas, ocrFormulas));
       lines.push('');
     }
   }
@@ -114,7 +119,7 @@ export function buildMarkdown({ paper, summary, derivations }: BuildMarkdownInpu
   return lines.join('\n');
 }
 
-function formulaBlock(f: Formula, heuristic: boolean): string {
+function formulaBlock(f: Formula, heuristic: boolean, ocr: boolean): string {
   if (heuristic) {
     const location = [f.page ? `第 ${f.page} 页` : '', f.confidence != null ? `置信度 ${Math.round(f.confidence * 100)}%` : '']
       .filter(Boolean)
@@ -123,6 +128,13 @@ function formulaBlock(f: Formula, heuristic: boolean): string {
     if (location) lines.push(`> ${location}`, '');
     lines.push('```text', f.latex, '```');
     return lines.join('\n');
+  }
+  if (ocr) {
+    const location = [
+      f.page ? `第 ${f.page} 页` : '',
+      f.bbox ? `bbox ${f.bbox.join(',')}` : '',
+    ].filter(Boolean).join(' · ');
+    return [location ? `> MinerU OCR · ${location}` : '> MinerU OCR', '', '$$', f.latex, '$$'].join('\n');
   }
   // 网页来源有真实 LaTeX，统一用块级展示。
   return ['$$', f.latex, '$$'].join('\n');
