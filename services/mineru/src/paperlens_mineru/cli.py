@@ -10,6 +10,7 @@ from typing import Mapping, Sequence
 
 from .api import create_app
 from .config import ConfigError, ServiceConfig, generate_access_token, load_config
+from .diagnostics import collect_diagnostics, format_diagnostics
 from .normalizer import MineruResultProcessor
 from .upstream import MineruApiSupervisor, MineruUpstreamRunner
 
@@ -80,6 +81,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             config = load_config(config_path)
             print(f"配置有效：{config.host}:{config.port}，MinerU {config.mineru_version}/{config.backend}")
             return 0
+        if command == "doctor":
+            report = collect_diagnostics(config_path, check_health=args.health)
+            print(format_diagnostics(report))
+            return 0 if report.ok else 1
         if command == "serve":
             result = initialize_config(config_path)
             _print_bootstrap(result)
@@ -124,6 +129,9 @@ def _build_parser() -> argparse.ArgumentParser:
     for name in ("serve", "init", "check-config"):
         subparser = subparsers.add_parser(name)
         subparser.add_argument("--config", help="TOML 配置路径")
+    doctor = subparsers.add_parser("doctor")
+    doctor.add_argument("--config", help="TOML 配置路径")
+    doctor.add_argument("--health", action="store_true", help="同时验证已启动服务的 schema v1 health")
     subparsers.add_parser("generate-token")
     return parser
 

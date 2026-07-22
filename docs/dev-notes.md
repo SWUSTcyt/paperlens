@@ -52,6 +52,14 @@
 - **验收产物新鲜度**：一次浏览器冒烟曾复制早于源码的 `.output`，表现为 UI 永远等不到 job。浏览器测试命令现已强制先 `pnpm build`；以后不得用旧构建证明当前源码可用。
 - **冻结模型优先于测试猜测**：文档级 OCR 来源用 `formulaRecognition.provider`，逐公式来源用 `Formula.recognitionSource`。测试曾错误要求未冻结的 `PaperContent.recognitionSource`，被 TypeScript 拦下后按 Spec 修正，未扩张模型。
 
+## M12 MinerU Windows 交付（Epic C1）
+
+- **运行时不可搬迁**：Windows venv 的入口记录解释器绝对路径，不能先在 staging 构建再整体改名。安装器改为在最终 `versions/generation_*` 路径构建，候选通过 `init/check-config/doctor` 后只原子切换 `current.txt`；失败删除候选并保留旧 generation。
+- **目录所有权**：运行时根必须有 `.paperlens-mineru-runtime` marker；无 marker 的现存目录一律拒绝覆盖。配置与任务数据禁止放进可替换运行时目录。
+- **可分享诊断**：`doctor` 只输出稳定错误码、版本、端口和字节统计，不输出 token、配置/缓存绝对路径或底层异常；首次 token 仍只在 `init` 创建配置时显示一次。
+- **Windows 进程边界**：PowerShell 5.1 脚本必须用 UTF-8 BOM，并统一控制台/Python UTF-8。IDE 可能同时注入 `Path/PATH`，调用 `Start-Process` 前要在子进程内定点重建 `PATH`。内部变量不得占用受保护的 `PAPERLENS_MINERU_*` 配置前缀。
+- **真实验收**：全新隔离运行时首次安装 51.7 秒、约 2.27 GB；同路径重装保持配置/token，health 与扩展 client 成功，结束后 17860 端口无监听。
+
 ## M0 环境搭建
 
 ### 关键选型

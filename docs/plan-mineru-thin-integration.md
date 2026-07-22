@@ -1,9 +1,10 @@
 # MinerU pipeline 薄集成实施计划
 
-> 状态：**用户已批准实施与发布；Epic A（A1–A3）、Epic B（B1–B4）已过门，Epic C 待实施。**
+> 状态：**Epic A（A1–A3）、Epic B（B1–B4）与 Epic C Issue C1 已过门；C2 未启动。**
 > 依据：`docs/evaluations/pdf-ocr-poc-b-mineru.md` 的 P1 通过结果。
 > 目标：在不改变现有网页抽取和 PDF 解读能力的前提下，为任意 PDF 增加可取消、可回退、可人工核对的本地展示公式识别。
 > Epic B 验收证据：`docs/evaluations/mineru-thin-epic-b.md`。
+> Epic C1 验收证据：`docs/evaluations/mineru-thin-epic-c1.md`。
 
 ## 1. 冻结边界
 
@@ -221,10 +222,35 @@ OCR 结果先完整校验，再一次性替换 `formulas`、`sections[].formulaI
 - P2：裁剪图缩放与键盘可访问性。
 - P3：在 PDF 阅读器中自动定位 bbox（本轮不做）。
 
-### Epic C：交付与运维（B1 通过后再细化）
+### Epic C：交付与运维
 
-- Windows 从零安装/升级/卸载、服务启动与故障排查文档。
-- 真实 Edge/Chrome 回归：在线、上传、file、服务缺失、取消、超时、TTL 后裁剪失效。
+#### Milestone C1：Windows 可重复安装生命周期
+
+起始条件：Epic A/B 已通过 PR #1 合入 `main`；以干净 Windows、Python 3.12 与 uv 为默认环境，不依赖全局 Anaconda、CUDA 或 Docker。
+
+**Issue C1 — 从零安装与脱敏诊断（完成）**
+
+- 输入：现有源码版安装步骤、`paperlens-mineru init/check-config/serve`、冻结的 MinerU 3.4.4 依赖。
+- 输出：可重复执行的 Windows 安装入口、安装前置检查/脱敏诊断、从零安装与扩展连接验收记录。
+- 依赖：Epic A/B。
+- P0：不得修改全局 Anaconda/CUDA；不得覆盖已有配置或泄漏 token；失败安装可回收且不删除用户数据；服务仍只允许 `127.0.0.1`。
+- P1：干净 Windows 按单一路径可完成安装、`init`、配置校验、启动、`/v1/health ready` 与扩展“测试连接”；重复执行结果幂等；记录安装耗时与服务/模型磁盘占用。
+- P2：诊断输出自动脱敏，并能区分 Python/uv、依赖、配置、端口和模型就绪问题。
+- P3：GUI 安装器和 Docker。
+
+**Issue C2 — 升级、修复与卸载（未启动）**
+
+- 输入：C1 安装入口和现有配置/任务/模型目录约定。
+- 输出：同版本修复、升级、保留数据卸载、显式完全清理流程及故障排查文档。
+- 依赖：C1。
+- P0：停止/卸载后不残留服务 worker 或占用端口；默认卸载不得误删配置、模型和任务数据；完全清理必须二次明确；升级失败时旧服务可恢复或扩展确定性回退 Phase C。
+- P1：实测修复安装、版本升级模拟、保留 token/config 卸载和完全清理；重装后扩展连接恢复；每条路径有可读错误与恢复步骤。
+- P2：可选的用户级快捷启动方式。
+- P3：系统级后台服务和自动更新。
+
+#### Milestone C2：发布矩阵与最终门禁（C1 过门后细化）
+
+- 真实 Edge/Chrome 回归：在线、上传、file、服务缺失、401、版本不兼容、取消、超时、切页竞态、TTL 后 crop 失效。
 - 薄集成发布门：P0/P1 全过、`pnpm compile`、`pnpm build`、65 条金标无回归、无敏感/本地产物入 Git。
 - 不默认编写 Docker 路径；若后续需要，作为独立 P2 Issue 申请。
 
