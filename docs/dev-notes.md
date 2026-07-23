@@ -60,6 +60,15 @@
 - **Windows 进程边界**：PowerShell 5.1 脚本必须用 UTF-8 BOM，并统一控制台/Python UTF-8。IDE 可能同时注入 `Path/PATH`，调用 `Start-Process` 前要在子进程内定点重建 `PATH`。内部变量不得占用受保护的 `PAPERLENS_MINERU_*` 配置前缀。
 - **真实验收**：全新隔离运行时首次安装 51.7 秒、约 2.27 GB；同路径重装保持配置/token，health 与扩展 client 成功，结束后 17860 端口无监听。
 
+## M13 MinerU 用户级后台与稳定更新（Epic C3）
+
+- **用户级后台不等于 SCM**：沿用 `%LOCALAPPDATA%` 与现有 token 时，任务计划程序的当前用户 `Interactive + Limited` 登录任务能避免管理员权限和服务账户迁移；任务名、描述、SID、动作、触发器与设置必须整体核验，同名非 PaperLens 任务拒绝修改。
+- **Windows 会规范化身份**：注册时输入 SID，读取任务时可能返回 `域\用户`；必须把两者解析回 SID 严格比较，不能用字符串模糊匹配。
+- **控制台入口命令行**：经 `.cmd` 启动时真实形态是 `python.exe ...\paperlens-mineru.exe serve --config ...`，不是 `python -m paperlens_mineru.cli`。服务状态 v2 记录精确入口；v1 兼容只接受这两种固定形态，仍校验 PID 创建时间、exe 和 config。
+- **更新事务边界**：运行中只允许 `CheckOnly`；Scheduled/UpdateNow 在下载前和安装前各查一次状态，候选安装器使用 `RefuseRunningService`，竞态启动只会令端口检查失败，不会被更新器停止。
+- **信任链与回滚**：只接受固定仓库 `mineru-v<SemVer>` 稳定 Release 的精确资产名；初始 URL、最终 GitHub 域、声明/实际大小、SHA-256、安全 ZIP 与包版本全部通过后才调用 C2 安装器。更新失败状态脱敏，旧 generation 保留，登录仍启动旧服务。
+- **PowerShell 5.1 原生 stderr**：uv 的正常进度写 stderr；更新编排必须在局部捕获后按 `$LASTEXITCODE` 裁决，不能让全局 `ErrorActionPreference=Stop` 把正常进度误判成失败，也不能把原始日志回显泄漏路径。
+
 ## M0 环境搭建
 
 ### 关键选型

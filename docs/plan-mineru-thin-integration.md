@@ -1,10 +1,11 @@
 # MinerU pipeline 薄集成实施计划
 
-> 状态：**Epic A（A1–A3）、Epic B（B1–B4）与 Epic C（C1、C2、发布门 P0/P1）已过门。**
+> 状态：**Epic A（A1–A3）、Epic B（B1–B4）与 Epic C（C1–C3、发布门 P0/P1）已过门。**
 > 依据：`docs/evaluations/pdf-ocr-poc-b-mineru.md` 的 P1 通过结果。
 > 目标：在不改变现有网页抽取和 PDF 解读能力的前提下，为任意 PDF 增加可取消、可回退、可人工核对的本地展示公式识别。
 > Epic B 验收证据：`docs/evaluations/mineru-thin-epic-b.md`。
 > Epic C1 验收证据：`docs/evaluations/mineru-thin-epic-c1.md`。
+> Epic C3 验收证据：`docs/evaluations/mineru-thin-epic-c3.md`。
 
 ## 1. 冻结边界
 
@@ -255,6 +256,38 @@ OCR 结果先完整校验，再一次性替换 `formulas`、`sections[].formulaI
 - 默认卸载只删除已标记运行时，配置、任务与 PaperLens 专用模型缓存全部保留；完整清理必须同时提供 `-PurgeData` 和精确短语 `DELETE PAPERLENS MINERU DATA`，且数据目录 marker 有效。
 - 真实 2.27 GB 运行时在 159.1 秒内完成“修复 → 运行中保留卸载 → 重装恢复 → 运行中完整清理”，每次结束均验证 17860 可独占绑定。
 - P2 由稳定的用户目录启动器 `paperlens-mineru.cmd` 提供；P3 系统服务和自动更新按计划延后。
+
+#### Milestone C3：Windows 用户级后台启动与稳定更新（完成）
+
+起始条件：C1/C2 与发布门已通过并合入 `main`；继续使用 `%LOCALAPPDATA%` 的用户级运行时、配置和 token。详细边界见 `docs/spec/mineru-windows-user-autostart-update.md`。
+
+**Issue C3.1 — 当前用户登录自启动与任务生命周期（完成）**
+
+- 输入：C1/C2 安装器、稳定启动器、可信服务状态与保留数据卸载流程。
+- 输出：任务计划程序的幂等注册、状态、立即运行和移除入口；安装/修复/卸载联动；使用示例。
+- 依赖：C2。
+- P0：只以当前用户有限权限运行，不创建 SCM 服务、不要求管理员权限、不改变现有配置/token；任务操作只能命中固定 PaperLens 任务，卸载前必须移除任务；服务已运行时不得重复启动或终止任务。
+- P1：真实注册后可核验登录触发器、隐藏 PowerShell 动作、稳定维护脚本路径和无限执行时长；重复注册结果幂等；立即运行可到达 `/v1/health ready`；移除后无任务、worker 或端口残留。
+- P2：状态和错误输出脱敏、可读，可区分未安装、任务缺失、任务配置漂移和服务已运行。
+- P3：开机前启动、SCM、多用户共享服务。
+
+**Issue C3.2 — 固定稳定通道自动更新（完成）**
+
+- 输入：C3.1 登录维护入口、C2 候选 generation 安装与回滚、固定 `SWUSTcyt/paperlens` GitHub Releases。
+- 输出：登录前置的 24 小时限频检查、版本化 ZIP+SHA-256 下载与安全解包、手动检查/立即更新命令、Release 资产契约和示例。
+- 依赖：C3.1。
+- P0：仅接受固定仓库的非预发布稳定 Release；哈希、大小、ZIP 路径或包结构任一校验失败均不得调用安装器；服务已运行时跳过且不中断任务；失败不得切换 `current.txt`、覆盖配置、泄漏 token 或更新 Chrome 扩展。
+- P1：无更新、成功更新、离线、Release/资产缺失、哈希不匹配、恶意 ZIP、候选安装失败和 24 小时间隔均有确定性测试；成功路径复用 C2 安装器并真实验证新 health，失败路径旧 health 仍可用。
+- P2：原子保存不含 token/绝对用户路径的检查状态与结果码；下载有超时、大小上限和临时文件清理。
+- P3：代码签名、差分更新、测试/预发布通道和扩展本体更新。
+
+实现与验收（2026-07-23）：
+
+- 安装器默认幂等注册固定的 `PaperLens MinerU` 当前用户登录任务；任务使用 `Interactive + Limited`、隐藏 PowerShell 动作、`IgnoreNew` 和无限执行时长。真实任务完成“注册两次 → 运行 → health ready → 再次运行保持同一 PID → 停止 → 移除”，最终无任务、worker、状态文件或 17860 监听。
+- 登录维护在服务启动前检查固定 `SWUSTcyt/paperlens` 稳定 Release，24 小时内不重复联网；服务已运行时更新动作立即跳过，检查、下载或安装失败时继续启动旧 generation，不中断现有任务。
+- 更新只接受 `mineru-v<SemVer>`、精确版本化 ZIP 与 `.sha256`。下载大小、最终 GitHub 域、SHA-256、安全 ZIP 根、Windows 路径/设备名、包名和版本均通过后，才调用 C2 候选安装器；失败候选不切换 `current.txt`。
+- Python 85/85（含真实任务测试）通过；`updates.py` 语句覆盖率 80.98%；`pnpm compile`、`pnpm build`、`uv build services/mineru` 通过。固定通道真实检查返回 `UPDATE_CURRENT`，状态文件不含 token 或绝对路径。
+- 当前固定仓库尚无匹配的 `mineru-v*` 稳定资产，因此“从 GitHub 实际下载并应用首个生产包”保留为首发部署冒烟；本地已分别验证 Release 打包/哈希、网络与恶意包契约、候选切换/失败回滚及真实服务 health，不降低发布资产契约。
 
 #### Milestone C2：发布矩阵与最终门禁（完成）
 

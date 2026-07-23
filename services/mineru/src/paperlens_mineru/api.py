@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 from contextlib import asynccontextmanager, suppress
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Annotated, Callable
 from uuid import uuid4
@@ -53,9 +54,10 @@ def create_app(
                 await cleanup
             await manager.close()
 
+    service_version = package_version("paperlens-mineru")
     app = FastAPI(
         title="PaperLens MinerU Local Service",
-        version="0.1.0",
+        version=service_version,
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -112,7 +114,7 @@ def create_app(
         return {
             "schemaVersion": CONTRACT_SCHEMA_VERSION,
             "service": "paperlens-mineru",
-            "serviceVersion": "0.1.0",
+            "serviceVersion": service_version,
             "status": "ready" if manager.started and not manager.closed else "starting",
             "engine": {"name": "mineru", "version": config.mineru_version, "backend": config.backend},
             "limits": {

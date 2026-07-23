@@ -5,7 +5,9 @@ param(
     [string]$SourceRoot,
     [string]$InstallRoot,
     [string]$ConfigPath,
-    [string]$PythonVersion = "3.12"
+    [string]$PythonVersion = "3.12",
+    [switch]$SkipStartupTask,
+    [switch]$RefuseRunningService
 )
 
 Set-StrictMode -Version Latest
@@ -19,6 +21,13 @@ $env:PYTHONIOENCODING = "utf-8"
 $runtimeMarkerName = ".paperlens-mineru-runtime"
 $runtimeMarkerValue = "paperlens-mineru-runtime-v1"
 $generationPattern = '^generation_[0-9a-f]{32}$'
+$maintenanceNames = @(
+    "install-windows.ps1",
+    "uninstall-windows.ps1",
+    "manage-windows-task.ps1",
+    "startup-windows.ps1",
+    "update-windows.ps1"
+)
 $failureStage = "准备安装"
 
 function Invoke-NativeChecked {
@@ -108,6 +117,11 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $source "pyproject.toml") -PathType Leaf)) {
         throw "安装源缺少 pyproject.toml。"
     }
+    foreach ($maintenanceName in $maintenanceNames) {
+        if (-not (Test-Path -LiteralPath (Join-Path $source "scripts\$maintenanceName") -PathType Leaf)) {
+            throw "安装源缺少 Windows 维护入口。"
+        }
+    }
     $install = Resolve-UncreatedPath $InstallRoot
     $config = Resolve-UncreatedPath $ConfigPath
     $installParent = Split-Path -Parent $install
@@ -157,6 +171,13 @@ try {
             throw "当前运行时标识无效。"
         }
     }
+    $maintenance = Join-Path $install "maintenance"
+    $maintenanceStage = Join-Path $install "maintenance.next.$([Guid]::NewGuid().ToString('N'))"
+    $maintenanceBackup = Join-Path $install "maintenance.backup.$([Guid]::NewGuid().ToString('N'))"
+    $maintenanceReplaced = $false
+    $currentSwitched = $false
+    $taskExisted = $false
+    $taskRegistrationAttempted = $false
 
     $started = Get-Date
     try {
@@ -178,9 +199,37 @@ try {
         Invoke-NativeChecked $candidateCli @("check-config", "--config", $config)
         Invoke-NativeChecked $candidateCli @("doctor", "--config", $config)
 
+        $failureStage = "准备维护入口"
+        New-Item -ItemType Directory -Path $maintenanceStage -Force | Out-Null
+        foreach ($maintenanceName in $maintenanceNames) {
+            Copy-Item `
+                -LiteralPath (Join-Path $source "scripts\$maintenanceName") `
+                -Destination (Join-Path $maintenanceStage $maintenanceName)
+        }
+
         # 候选版本已完整验证后，才允许停止旧服务并切换 current；候选失败时旧服务不受影响。
-        $failureStage = "停止旧服务"
-        Invoke-NativeChecked $candidateCli @("stop", "--config", $config)
+        if ($RefuseRunningService) {
+            $failureStage = "确认服务未运行"
+            $statusJson = (& $candidateCli "status" "--config" $config | Out-String)
+            if ($LASTEXITCODE -ne 0) {
+                throw "无法读取服务状态。"
+            }
+            $status = $statusJson | ConvertFrom-Json
+            if (
+                [int]$status.schemaVersion -ne 1 -or
+                $null -eq $status.running -or
+                $status.running -isnot [bool]
+            ) {
+                throw "服务状态格式无效。"
+            }
+            if ([bool]$status.running) {
+                throw "服务正在运行；自动更新拒绝中断现有任务。"
+            }
+        }
+        else {
+            $failureStage = "停止旧服务"
+            Invoke-NativeChecked $candidateCli @("stop", "--config", $config)
+        }
         $failureStage = "验证服务端口"
         $lifecycleJson = (& $candidateCli "lifecycle-info" "--config" $config | Out-String)
         if ($LASTEXITCODE -ne 0) {
@@ -208,11 +257,86 @@ set /p PL_MINERU_GENERATION=<"%~dp0current.txt"
         Set-Content -LiteralPath $launcherNext -Value $launcherContent -Encoding ASCII -NoNewline
         Move-Item -LiteralPath $launcherNext -Destination $launcher -Force
 
+        if (Test-Path -LiteralPath $maintenance -PathType Container) {
+            Move-Item -LiteralPath $maintenance -Destination $maintenanceBackup
+        }
+        Move-Item -LiteralPath $maintenanceStage -Destination $maintenance
+        $maintenanceReplaced = $true
+
         $currentNext = Join-Path $install "current.txt.next"
         Set-Content -LiteralPath $currentNext -Value $generation -Encoding ASCII -NoNewline
         Move-Item -LiteralPath $currentNext -Destination $currentFile -Force
+        $currentSwitched = $true
+
+        if (-not $SkipStartupTask) {
+            $failureStage = "注册登录任务"
+            $manager = Join-Path $maintenance "manage-windows-task.ps1"
+            $powershell = Join-Path $PSHOME "powershell.exe"
+            & $powershell `
+                "-NoProfile" `
+                "-ExecutionPolicy" "Bypass" `
+                "-File" $manager `
+                "-Action" "Status" `
+                "-InstallRoot" $install `
+                "-ConfigPath" $config | Out-Null
+            $taskStatusExit = $LASTEXITCODE
+            if ($taskStatusExit -eq 0) {
+                $taskExisted = $true
+            }
+            elseif ($taskStatusExit -eq 3) {
+                $taskExisted = $false
+            }
+            else {
+                $taskExisted = $true
+                throw "现有登录任务不受信任或配置漂移。"
+            }
+            $taskRegistrationAttempted = $true
+            Invoke-NativeChecked $powershell @(
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File", $manager,
+                "-Action", "Register",
+                "-InstallRoot", $install,
+                "-ConfigPath", $config
+            )
+        }
     }
     catch {
+        if ($taskRegistrationAttempted -and -not $taskExisted) {
+            $rollbackManager = Join-Path $maintenance "manage-windows-task.ps1"
+            if (Test-Path -LiteralPath $rollbackManager -PathType Leaf) {
+                $powershell = Join-Path $PSHOME "powershell.exe"
+                & $powershell `
+                    "-NoProfile" `
+                    "-ExecutionPolicy" "Bypass" `
+                    "-File" $rollbackManager `
+                    "-Action" "Unregister" `
+                    "-InstallRoot" $install `
+                    "-ConfigPath" $config 2>$null | Out-Null
+            }
+        }
+        if ($currentSwitched) {
+            if ($previousGeneration) {
+                $currentRollback = Join-Path $install "current.txt.rollback"
+                Set-Content -LiteralPath $currentRollback -Value $previousGeneration -Encoding ASCII -NoNewline
+                Move-Item -LiteralPath $currentRollback -Destination $currentFile -Force
+            }
+            else {
+                Remove-Item -LiteralPath $currentFile -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath (Join-Path $install "paperlens-mineru.cmd") -Force -ErrorAction SilentlyContinue
+            }
+        }
+        if (Test-Path -LiteralPath $maintenanceStage -PathType Container) {
+            Remove-Item -LiteralPath $maintenanceStage -Recurse -Force
+        }
+        if ($maintenanceReplaced) {
+            if (Test-Path -LiteralPath $maintenance -PathType Container) {
+                Remove-Item -LiteralPath $maintenance -Recurse -Force
+            }
+            if (Test-Path -LiteralPath $maintenanceBackup -PathType Container) {
+                Move-Item -LiteralPath $maintenanceBackup -Destination $maintenance
+            }
+        }
         if (Test-Path -LiteralPath $candidate -PathType Container) {
             Remove-Item -LiteralPath $candidate -Recurse -Force
         }
@@ -222,6 +346,9 @@ set /p PL_MINERU_GENERATION=<"%~dp0current.txt"
         throw
     }
 
+    if (Test-Path -LiteralPath $maintenanceBackup -PathType Container) {
+        Remove-Item -LiteralPath $maintenanceBackup -Recurse -Force -ErrorAction SilentlyContinue
+    }
     if ($previousGeneration -and $previousGeneration -ne $generation) {
         $previous = Join-Path $versionsRoot $previousGeneration
         if ((Test-PathInside $previous $versionsRoot) -and (Test-Path -LiteralPath $previous -PathType Container)) {
@@ -233,6 +360,7 @@ set /p PL_MINERU_GENERATION=<"%~dp0current.txt"
     $runtimeBytes = Get-DirectoryBytes $install
     Write-Output "PaperLens MinerU Windows 安装完成。"
     Write-Output "launcher=$install\paperlens-mineru.cmd"
+    Write-Output $(if ($SkipStartupTask) { "startupTask=skipped" } else { "startupTask=registered" })
     Write-Output "installSeconds=$elapsed"
     Write-Output "runtimeBytes=$runtimeBytes"
 }

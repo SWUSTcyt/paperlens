@@ -24,6 +24,11 @@ class StopResult:
     stopped: bool
 
 
+@dataclass(frozen=True)
+class ServiceStatus:
+    running: bool
+
+
 def ensure_data_root_marker(data_root: Path) -> Path:
     root = data_root.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -51,10 +56,11 @@ def service_instance(config: ServiceConfig, config_path: Path) -> Iterator[None]
     process = psutil.Process(os.getpid())
     nonce = uuid4().hex
     payload = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "pid": process.pid,
         "createTime": process.create_time(),
         "executable": process.exe(),
+        "entrypoint": _current_entrypoint(),
         "configPath": str(config_path.expanduser().resolve()),
         "nonce": nonce,
     }
@@ -103,6 +109,28 @@ def stop_service(config_path: Path) -> StopResult:
     return StopResult(stopped=True)
 
 
+def service_status(config_path: Path) -> ServiceStatus:
+    """只读确认可信服务是否运行；不会向任何进程发送终止信号。"""
+
+    resolved_config = config_path.expanduser().resolve()
+    config = load_config(resolved_config)
+    state_path = config.data_root.resolve() / SERVICE_STATE_NAME
+    if not state_path.is_file():
+        return ServiceStatus(running=False)
+    state = _read_state(state_path)
+    if Path(state["configPath"]) != resolved_config:
+        raise ConfigError("SERVICE_STATE_UNTRUSTED", "服务状态与当前配置不匹配。")
+    try:
+        process = psutil.Process(state["pid"])
+        _verify_owned_process(process, state, resolved_config)
+    except psutil.NoSuchProcess:
+        state_path.unlink(missing_ok=True)
+        return ServiceStatus(running=False)
+    except (psutil.AccessDenied, OSError) as error:
+        raise ConfigError("SERVICE_STATUS_DENIED", "无法验证 PaperLens MinerU 服务进程。") from error
+    return ServiceStatus(running=True)
+
+
 def lifecycle_info(config_path: Path) -> dict[str, object]:
     resolved_config = config_path.expanduser().resolve()
     config = load_config(resolved_config)
@@ -138,15 +166,23 @@ def _reject_live_instance(state_path: Path) -> None:
 def _read_state(state_path: Path) -> dict[str, object]:
     try:
         value = json.loads(state_path.read_text(encoding="utf-8"))
+        schema_version = value.get("schemaVersion") if isinstance(value, dict) else None
         if (
             not isinstance(value, dict)
-            or value.get("schemaVersion") != 1
+            or schema_version not in (1, 2)
             or not isinstance(value.get("pid"), int)
             or value["pid"] <= 0
             or not isinstance(value.get("createTime"), (int, float))
             or not isinstance(value.get("executable"), str)
             or not isinstance(value.get("configPath"), str)
             or not isinstance(value.get("nonce"), str)
+            or (
+                schema_version == 2
+                and (
+                    not isinstance(value.get("entrypoint"), str)
+                    or not value["entrypoint"]
+                )
+            )
         ):
             raise ValueError("invalid state")
         return value
@@ -162,12 +198,34 @@ def _verify_owned_process(process: psutil.Process, state: dict[str, object], con
         raise ConfigError("SERVICE_STATE_UNTRUSTED", "服务可执行文件不匹配，拒绝终止。")
     command = process.cmdline()
     normalized = [os.path.normcase(item) for item in command]
+    if state["schemaVersion"] == 2:
+        entrypoint = str(state["entrypoint"])
+        entrypoint_matches = (
+            entrypoint == "paperlens_mineru.cli"
+            and "paperlens_mineru.cli" in command
+        ) or os.path.normcase(entrypoint) in normalized
+    else:
+        entrypoint_matches = "paperlens_mineru.cli" in command or any(
+            Path(item).name.lower() == "paperlens-mineru.exe"
+            for item in command
+        )
     if (
-        "paperlens_mineru.cli" not in command
+        not entrypoint_matches
         or "serve" not in command
         or os.path.normcase(str(config_path)) not in normalized
     ):
         raise ConfigError("SERVICE_STATE_UNTRUSTED", "服务启动参数不匹配，拒绝终止。")
+
+
+def _current_entrypoint() -> str:
+    original = list(getattr(sys, "orig_argv", ()))
+    for item in original[1:]:
+        if Path(item).name.lower() == "paperlens-mineru.exe":
+            return str(Path(item).expanduser().resolve())
+    for index, item in enumerate(original[:-1]):
+        if item == "-m" and original[index + 1] == "paperlens_mineru.cli":
+            return "paperlens_mineru.cli"
+    return str(Path(sys.argv[0]).expanduser().resolve())
 
 
 def _terminate_process(process: psutil.Process) -> None:

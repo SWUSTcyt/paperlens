@@ -12,6 +12,7 @@ from paperlens_mineru.config import ConfigError, ServiceConfig
 from paperlens_mineru.lifecycle import (
     DATA_MARKER_NAME,
     SERVICE_STATE_NAME,
+    service_status,
     service_instance,
     stop_service,
 )
@@ -21,6 +22,76 @@ TOKEN = "lifecycle_test_token_1234567890abcdef"
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_status_reports_exact_owned_process_without_terminating_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "paperlens-mineru.toml"
+            _write_config(config_path, root)
+            executable = root / "runtime" / "python.exe"
+            state = {
+                "schemaVersion": 1,
+                "pid": 4321,
+                "createTime": 99.5,
+                "executable": str(executable),
+                "configPath": str(config_path.resolve()),
+                "nonce": "owned",
+            }
+            (root / SERVICE_STATE_NAME).write_text(json.dumps(state), encoding="utf-8")
+            process = Mock()
+            process.create_time.return_value = 99.5
+            process.exe.return_value = str(executable)
+            process.cmdline.return_value = [
+                str(executable),
+                "-m",
+                "paperlens_mineru.cli",
+                "serve",
+                "--config",
+                str(config_path.resolve()),
+            ]
+
+            with patch("paperlens_mineru.lifecycle.psutil.Process", return_value=process):
+                result = service_status(config_path)
+
+            self.assertTrue(result.running)
+            process.terminate.assert_not_called()
+            self.assertTrue((root / SERVICE_STATE_NAME).is_file())
+
+    def test_status_clears_stale_state_but_rejects_forged_live_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "paperlens-mineru.toml"
+            _write_config(config_path, root)
+            state_path = root / SERVICE_STATE_NAME
+            state = {
+                "schemaVersion": 1,
+                "pid": 4321,
+                "createTime": 99.5,
+                "executable": str(root / "expected.exe"),
+                "configPath": str(config_path.resolve()),
+                "nonce": "state",
+            }
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            with patch(
+                "paperlens_mineru.lifecycle.psutil.Process",
+                side_effect=psutil.NoSuchProcess(pid=4321),
+            ):
+                self.assertFalse(service_status(config_path).running)
+            self.assertFalse(state_path.exists())
+
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            process = Mock()
+            process.create_time.return_value = 99.5
+            process.exe.return_value = str(root / "other.exe")
+            with (
+                patch("paperlens_mineru.lifecycle.psutil.Process", return_value=process),
+                self.assertRaises(ConfigError) as raised,
+            ):
+                service_status(config_path)
+
+            process.terminate.assert_not_called()
+            self.assertTrue(state_path.exists())
+            self.assertEqual(raised.exception.code, "SERVICE_STATE_UNTRUSTED")
+
     def test_service_instance_marks_data_root_and_never_persists_token(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -35,7 +106,10 @@ class LifecycleTests(unittest.TestCase):
                     state_path = config.data_root / SERVICE_STATE_NAME
                     payload = state_path.read_text(encoding="utf-8")
                     self.assertNotIn(TOKEN, payload)
-                    self.assertEqual(json.loads(payload)["pid"], 1234)
+                    parsed = json.loads(payload)
+                    self.assertEqual(parsed["schemaVersion"], 2)
+                    self.assertEqual(parsed["pid"], 1234)
+                    self.assertTrue(parsed["entrypoint"])
                     self.assertTrue((config.data_root / DATA_MARKER_NAME).is_file())
                 self.assertFalse(state_path.exists())
 
@@ -121,6 +195,46 @@ class LifecycleTests(unittest.TestCase):
             process.terminate.assert_called_once_with()
             self.assertTrue(result.stopped)
             self.assertFalse((root / SERVICE_STATE_NAME).exists())
+
+    def test_stop_accepts_legacy_console_script_command_but_not_similar_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "paperlens-mineru.toml"
+            _write_config(config_path, root)
+            executable = root / "python.exe"
+            state = {
+                "schemaVersion": 1,
+                "pid": 4321,
+                "createTime": 99.5,
+                "executable": str(executable),
+                "configPath": str(config_path.resolve()),
+                "nonce": "legacy",
+            }
+            state_path = root / SERVICE_STATE_NAME
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            process = Mock()
+            process.create_time.return_value = 99.5
+            process.exe.return_value = str(executable)
+            process.cmdline.return_value = [
+                str(executable),
+                str(root / "runtime" / "Scripts" / "paperlens-mineru.exe"),
+                "serve",
+                "--config",
+                str(config_path.resolve()),
+            ]
+            process.children.return_value = []
+            process.wait.return_value = 0
+            with patch("paperlens_mineru.lifecycle.psutil.Process", return_value=process):
+                self.assertTrue(stop_service(config_path).stopped)
+
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            process.cmdline.return_value[1] = str(root / "runtime" / "Scripts" / "fake-paperlens-mineru.exe")
+            with (
+                patch("paperlens_mineru.lifecycle.psutil.Process", return_value=process),
+                self.assertRaises(ConfigError) as raised,
+            ):
+                stop_service(config_path)
+            self.assertEqual(raised.exception.code, "SERVICE_STATE_UNTRUSTED")
 
     def test_stop_rejects_forged_state_without_touching_process(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

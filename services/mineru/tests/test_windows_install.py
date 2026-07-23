@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -28,6 +29,11 @@ class WindowsInstallTests(unittest.TestCase):
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
             self.assertTrue((runtime / ".paperlens-mineru-runtime").is_file())
             self.assertTrue((runtime / "paperlens-mineru.cmd").is_file())
+            self.assertTrue((runtime / "maintenance" / "manage-windows-task.ps1").is_file())
+            self.assertTrue((runtime / "maintenance" / "startup-windows.ps1").is_file())
+            self.assertTrue((runtime / "maintenance" / "update-windows.ps1").is_file())
+            self.assertTrue((runtime / "maintenance" / "install-windows.ps1").is_file())
+            self.assertTrue((runtime / "maintenance" / "uninstall-windows.ps1").is_file())
             launcher = (runtime / "paperlens-mineru.cmd").read_text(encoding="ascii")
             self.assertIn("PL_MINERU_GENERATION", launcher)
             self.assertNotIn("PAPERLENS_MINERU_GENERATION", launcher)
@@ -169,6 +175,7 @@ def _run_installer(source: Path, runtime: Path, config: Path) -> subprocess.Comp
             str(runtime),
             "-ConfigPath",
             str(config),
+            "-SkipStartupTask",
         ],
         cwd=SERVICE_ROOT.parents[1],
         env=environment,
@@ -230,7 +237,7 @@ def _installed_version(runtime: Path) -> str:
     return result.stdout.strip()
 
 
-def _write_fake_package(root: Path, *, version: str) -> None:
+def _write_fake_package(root: Path, *, version: str, fail_doctor: bool = False) -> None:
     package = root / "src" / "paperlens_fake"
     package.mkdir(parents=True, exist_ok=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
@@ -239,14 +246,21 @@ def _write_fake_package(root: Path, *, version: str) -> None:
             f'''\
             from __future__ import annotations
 
-            import sys
             import json
+            import shutil
+            import sys
+            import tomllib
             from pathlib import Path
 
             TOKEN = "{TOKEN}"
+            VERSION = "{version}"
+            FAIL_DOCTOR = {fail_doctor!r}
 
             def main() -> int:
                 command = sys.argv[1]
+                if command == "version":
+                    print(json.dumps({{"schemaVersion": 1, "serviceVersion": VERSION}}))
+                    return 0
                 config = Path(sys.argv[sys.argv.index("--config") + 1])
                 if command == "init":
                     if config.exists():
@@ -262,6 +276,12 @@ def _write_fake_package(root: Path, *, version: str) -> None:
                     return 0 if config.is_file() else 2
                 if command == "doctor":
                     print("诊断通过。 token=<redacted>")
+                    return 2 if FAIL_DOCTOR else 0
+                if command == "status":
+                    print(json.dumps({{
+                        "schemaVersion": 1,
+                        "running": (config.parent / "running.flag").exists(),
+                    }}))
                     return 0
                 if command == "stop":
                     print("PaperLens MinerU 服务未运行。")
@@ -275,6 +295,31 @@ def _write_fake_package(root: Path, *, version: str) -> None:
                         "dataRoot": str(data_root.resolve()),
                         "dataMarkerValid": True,
                         "port": 17860,
+                    }}))
+                    return 0
+                if command in ("update-check", "update-prepare"):
+                    source_file = config.parent / "update-source.txt"
+                    if not source_file.is_file():
+                        print(json.dumps({{
+                            "schemaVersion": 1,
+                            "code": "UPDATE_CURRENT",
+                            "currentVersion": VERSION,
+                            "latestVersion": VERSION,
+                        }}))
+                        return 0
+                    source = Path(source_file.read_text(encoding="utf-8"))
+                    metadata = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
+                    latest = metadata["project"]["version"]
+                    code = "UPDATE_AVAILABLE"
+                    if command == "update-prepare":
+                        destination = Path(sys.argv[sys.argv.index("--destination") + 1])
+                        shutil.copytree(source, destination / "paperlens-mineru")
+                        code = "UPDATE_PREPARED"
+                    print(json.dumps({{
+                        "schemaVersion": 1,
+                        "code": code,
+                        "currentVersion": VERSION,
+                        "latestVersion": latest,
                     }}))
                     return 0
                 return 2
@@ -303,6 +348,16 @@ def _write_fake_package(root: Path, *, version: str) -> None:
         ),
         encoding="utf-8",
     )
+    scripts = root / "scripts"
+    scripts.mkdir(exist_ok=True)
+    for name in (
+        "install-windows.ps1",
+        "uninstall-windows.ps1",
+        "manage-windows-task.ps1",
+        "startup-windows.ps1",
+        "update-windows.ps1",
+    ):
+        shutil.copyfile(SERVICE_ROOT / "scripts" / name, scripts / name)
 
 
 if __name__ == "__main__":
