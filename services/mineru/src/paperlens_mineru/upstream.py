@@ -312,6 +312,8 @@ def build_upstream_environment(config: ServiceConfig, output_root: Path) -> dict
         }
     )
     env.setdefault("MINERU_MODEL_SOURCE", "modelscope")
+    env.setdefault("MODELSCOPE_CACHE", str(config.data_root / "models" / "modelscope"))
+    env.setdefault("HF_HOME", str(config.data_root / "models" / "huggingface"))
     return env
 
 

@@ -19,6 +19,7 @@ $env:PYTHONIOENCODING = "utf-8"
 $runtimeMarkerName = ".paperlens-mineru-runtime"
 $runtimeMarkerValue = "paperlens-mineru-runtime-v1"
 $generationPattern = '^generation_[0-9a-f]{32}$'
+$failureStage = "准备安装"
 
 function Invoke-NativeChecked {
     param(
@@ -62,6 +63,28 @@ function Get-DirectoryBytes {
         return [int64]0
     }
     return [int64]$measurement.Sum
+}
+
+function Assert-LoopbackPortReleased {
+    param([Parameter(Mandatory = $true)][int]$Port)
+
+    for ($attempt = 0; $attempt -lt 20; $attempt += 1) {
+        $listener = New-Object System.Net.Sockets.TcpListener(
+            [System.Net.IPAddress]::Loopback,
+            $Port
+        )
+        $listener.Server.ExclusiveAddressUse = $true
+        try {
+            $listener.Start()
+            $listener.Stop()
+            return
+        }
+        catch {
+            $listener.Stop()
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    throw "配置端口仍被占用；拒绝替换运行时。"
 }
 
 try {
@@ -137,6 +160,7 @@ try {
 
     $started = Get-Date
     try {
+        $failureStage = "创建候选运行时"
         Invoke-NativeChecked $uvCommand.Source @("venv", $candidate, "--python", $PythonVersion)
         $python = Join-Path $candidate "Scripts\python.exe"
         if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
@@ -145,6 +169,7 @@ try {
         Invoke-NativeChecked $uvCommand.Source @(
             "pip", "install", "--python", $python, "--link-mode=copy", $source
         )
+        $failureStage = "验证候选运行时"
         $candidateCli = Join-Path $candidate "Scripts\paperlens-mineru.exe"
         if (-not (Test-Path -LiteralPath $candidateCli -PathType Leaf)) {
             throw "安装后缺少 paperlens-mineru 命令。"
@@ -153,6 +178,22 @@ try {
         Invoke-NativeChecked $candidateCli @("check-config", "--config", $config)
         Invoke-NativeChecked $candidateCli @("doctor", "--config", $config)
 
+        # 候选版本已完整验证后，才允许停止旧服务并切换 current；候选失败时旧服务不受影响。
+        $failureStage = "停止旧服务"
+        Invoke-NativeChecked $candidateCli @("stop", "--config", $config)
+        $failureStage = "验证服务端口"
+        $lifecycleJson = (& $candidateCli "lifecycle-info" "--config" $config | Out-String)
+        if ($LASTEXITCODE -ne 0) {
+            throw "无法读取生命周期信息。"
+        }
+        $lifecycle = $lifecycleJson | ConvertFrom-Json
+        $dataRoot = Resolve-UncreatedPath ([string]$lifecycle.dataRoot)
+        if ($dataRoot -eq $install -or (Test-PathInside $dataRoot $install)) {
+            throw "数据目录不能位于可替换的运行时目录内。"
+        }
+        Assert-LoopbackPortReleased ([int]$lifecycle.port)
+
+        $failureStage = "切换当前运行时"
         $launcher = Join-Path $install "paperlens-mineru.cmd"
         $launcherNext = Join-Path $install "paperlens-mineru.cmd.next"
 $launcherContent = @'
@@ -196,6 +237,6 @@ set /p PL_MINERU_GENERATION=<"%~dp0current.txt"
     Write-Output "runtimeBytes=$runtimeBytes"
 }
 catch {
-    Write-Error "安装失败；旧运行时和用户配置未被覆盖。"
+    Write-Error "安装失败（$failureStage）；旧运行时和用户配置未被覆盖。"
     exit 1
 }

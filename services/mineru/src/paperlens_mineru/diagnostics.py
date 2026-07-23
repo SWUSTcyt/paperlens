@@ -13,6 +13,7 @@ from uuid import uuid4
 import httpx
 
 from .config import ConfigError, MINERU_VERSION, ServiceConfig, load_config
+from .lifecycle import DATA_MARKER_NAME
 
 
 @dataclass(frozen=True)
@@ -140,11 +141,18 @@ def _storage_check(config: ServiceConfig) -> DiagnosticCheck:
     except OSError:
         probe.unlink(missing_ok=True)
         return DiagnosticCheck("STORAGE_UNWRITABLE", "error", "任务存储目录不可写。")
+    data_bytes = _directory_size(root)
+    marker = root / DATA_MARKER_NAME
+    if marker.is_file():
+        try:
+            data_bytes = max(0, data_bytes - marker.stat().st_size)
+        except OSError:
+            pass
     return DiagnosticCheck(
         "STORAGE_WRITABLE",
         "ok",
         "任务存储目录可写。",
-        (("dataBytes", _directory_size(root)),),
+        (("dataBytes", data_bytes),),
     )
 
 

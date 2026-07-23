@@ -10,6 +10,7 @@ from pathlib import Path
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = SERVICE_ROOT / "scripts" / "install-windows.ps1"
+UNINSTALL_SCRIPT = SERVICE_ROOT / "scripts" / "uninstall-windows.ps1"
 TOKEN = "test_windows_installer_token_1234567890abcd"
 
 
@@ -21,7 +22,7 @@ class WindowsInstallTests(unittest.TestCase):
             source = root / "source"
             runtime = root / "runtime"
             config = root / "user-data" / "paperlens-mineru.toml"
-            _write_fake_package(source)
+            _write_fake_package(source, version="0.0.0")
 
             first = _run_installer(source, runtime, config)
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
@@ -36,6 +37,7 @@ class WindowsInstallTests(unittest.TestCase):
 
             stale_runtime_file = runtime / "versions" / first_generation / "stale.txt"
             stale_runtime_file.write_text("replace me", encoding="utf-8")
+            _write_fake_package(source, version="0.0.1")
             second = _run_installer(source, runtime, config)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertFalse(stale_runtime_file.exists())
@@ -43,8 +45,15 @@ class WindowsInstallTests(unittest.TestCase):
             self.assertNotIn(TOKEN, second.stdout)
             second_generation = (runtime / "current.txt").read_text(encoding="utf-8").strip()
             self.assertNotEqual(second_generation, first_generation)
+            self.assertEqual(_installed_version(runtime), "0.0.1")
 
-            preserved = runtime / "versions" / second_generation / "preserved-on-failure.txt"
+            repair = _run_installer(source, runtime, config)
+            self.assertEqual(repair.returncode, 0, repair.stdout + repair.stderr)
+            repair_generation = (runtime / "current.txt").read_text(encoding="utf-8").strip()
+            self.assertNotEqual(repair_generation, second_generation)
+            self.assertEqual(_installed_version(runtime), "0.0.1")
+
+            preserved = runtime / "versions" / repair_generation / "preserved-on-failure.txt"
             preserved.write_text("keep", encoding="utf-8")
             versions_before = sorted(path.name for path in (runtime / "versions").iterdir())
             broken_source = root / "broken-source"
@@ -53,7 +62,7 @@ class WindowsInstallTests(unittest.TestCase):
             self.assertNotEqual(failed.returncode, 0)
             self.assertEqual(preserved.read_text(encoding="utf-8"), "keep")
             self.assertEqual(config.read_text(encoding="utf-8"), original_config)
-            self.assertEqual((runtime / "current.txt").read_text(encoding="utf-8").strip(), second_generation)
+            self.assertEqual((runtime / "current.txt").read_text(encoding="utf-8").strip(), repair_generation)
             self.assertEqual(sorted(path.name for path in (runtime / "versions").iterdir()), versions_before)
 
     def test_refuses_to_replace_unmarked_directory(self) -> None:
@@ -64,12 +73,74 @@ class WindowsInstallTests(unittest.TestCase):
             runtime.mkdir()
             user_file = runtime / "user-file.txt"
             user_file.write_text("must survive", encoding="utf-8")
-            _write_fake_package(source)
+            _write_fake_package(source, version="0.0.0")
 
             result = _run_installer(source, runtime, root / "config.toml")
 
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(user_file.read_text(encoding="utf-8"), "must survive")
+
+    def test_default_uninstall_preserves_data_and_reinstall_then_purge_requires_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            runtime = root / "runtime"
+            data = root / "user-data"
+            config = data / "paperlens-mineru.toml"
+            _write_fake_package(source, version="0.0.1")
+            installed = _run_installer(source, runtime, config)
+            self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
+            original_config = config.read_text(encoding="utf-8")
+            (data / "tasks").mkdir()
+            (data / "tasks" / "saved.json").write_text("task", encoding="utf-8")
+            (data / "models").mkdir()
+            (data / "models" / "weights.bin").write_bytes(b"model")
+
+            preserved = _run_uninstaller(runtime, config)
+            self.assertEqual(preserved.returncode, 0, preserved.stdout + preserved.stderr)
+            self.assertFalse(runtime.exists())
+            self.assertEqual(config.read_text(encoding="utf-8"), original_config)
+            self.assertTrue((data / "tasks" / "saved.json").is_file())
+            self.assertTrue((data / "models" / "weights.bin").is_file())
+
+            reinstalled = _run_installer(source, runtime, config)
+            self.assertEqual(reinstalled.returncode, 0, reinstalled.stdout + reinstalled.stderr)
+            self.assertEqual(config.read_text(encoding="utf-8"), original_config)
+
+            refused = _run_uninstaller(runtime, config, purge=True, confirmation="DELETE")
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertTrue(runtime.is_dir())
+            self.assertTrue(config.is_file())
+            self.assertTrue((data / "models" / "weights.bin").is_file())
+
+            purged = _run_uninstaller(
+                runtime,
+                config,
+                purge=True,
+                confirmation="DELETE PAPERLENS MINERU DATA",
+            )
+            self.assertEqual(purged.returncode, 0, purged.stdout + purged.stderr)
+            self.assertFalse(runtime.exists())
+            self.assertFalse(data.exists())
+
+    def test_uninstall_refuses_when_data_root_is_inside_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            runtime = root / "runtime"
+            data = root / "user-data"
+            config = data / "paperlens-mineru.toml"
+            _write_fake_package(source, version="0.0.1")
+            installed = _run_installer(source, runtime, config)
+            self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
+            (data / "data-root-override.txt").write_text(str(runtime), encoding="utf-8")
+            protected = runtime / "must-survive.txt"
+            protected.write_text("user data", encoding="utf-8")
+
+            refused = _run_uninstaller(runtime, config)
+
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertEqual(protected.read_text(encoding="utf-8"), "user data")
 
 
 def _run_installer(source: Path, runtime: Path, config: Path) -> subprocess.CompletedProcess[str]:
@@ -110,9 +181,58 @@ def _run_installer(source: Path, runtime: Path, config: Path) -> subprocess.Comp
     )
 
 
-def _write_fake_package(root: Path) -> None:
+def _run_uninstaller(
+    runtime: Path,
+    config: Path,
+    *,
+    purge: bool = False,
+    confirmation: str = "",
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(UNINSTALL_SCRIPT),
+        "-InstallRoot",
+        str(runtime),
+        "-ConfigPath",
+        str(config),
+    ]
+    if purge:
+        command.extend(["-PurgeData", "-ConfirmPurge", confirmation])
+    return subprocess.run(
+        command,
+        cwd=SERVICE_ROOT.parents[1],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+    )
+
+
+def _installed_version(runtime: Path) -> str:
+    generation = (runtime / "current.txt").read_text(encoding="utf-8").strip()
+    result = subprocess.run(
+        [
+            str(runtime / "versions" / generation / "Scripts" / "python.exe"),
+            "-c",
+            "import importlib.metadata; print(importlib.metadata.version('paperlens-mineru'))",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def _write_fake_package(root: Path, *, version: str) -> None:
     package = root / "src" / "paperlens_fake"
-    package.mkdir(parents=True)
+    package.mkdir(parents=True, exist_ok=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
     (package / "cli.py").write_text(
         textwrap.dedent(
@@ -120,6 +240,7 @@ def _write_fake_package(root: Path) -> None:
             from __future__ import annotations
 
             import sys
+            import json
             from pathlib import Path
 
             TOKEN = "{TOKEN}"
@@ -132,12 +253,29 @@ def _write_fake_package(root: Path) -> None:
                         return 0
                     config.parent.mkdir(parents=True, exist_ok=True)
                     config.write_text(f'[auth]\\ntoken = "{{TOKEN}}"\\n', encoding="utf-8")
+                    (config.parent / ".paperlens-mineru-data").write_text(
+                        "paperlens-mineru-data-v1", encoding="utf-8"
+                    )
                     print(TOKEN)
                     return 0
                 if command == "check-config":
                     return 0 if config.is_file() else 2
                 if command == "doctor":
                     print("诊断通过。 token=<redacted>")
+                    return 0
+                if command == "stop":
+                    print("PaperLens MinerU 服务未运行。")
+                    return 0
+                if command == "lifecycle-info":
+                    override = config.parent / "data-root-override.txt"
+                    data_root = Path(override.read_text(encoding="utf-8")) if override.exists() else config.parent
+                    print(json.dumps({{
+                        "schemaVersion": 1,
+                        "configPath": str(config.resolve()),
+                        "dataRoot": str(data_root.resolve()),
+                        "dataMarkerValid": True,
+                        "port": 17860,
+                    }}))
                     return 0
                 return 2
             '''
@@ -146,14 +284,14 @@ def _write_fake_package(root: Path) -> None:
     )
     (root / "pyproject.toml").write_text(
         textwrap.dedent(
-            '''\
+            f'''\
             [build-system]
             requires = ["hatchling>=1.27,<2"]
             build-backend = "hatchling.build"
 
             [project]
             name = "paperlens-mineru"
-            version = "0.0.0"
+            version = "{version}"
             requires-python = ">=3.12,<3.13"
 
             [project.scripts]

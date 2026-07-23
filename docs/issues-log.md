@@ -29,3 +29,9 @@
 - **问题**：启动器临时变量曾命名为 `PAPERLENS_MINERU_GENERATION`，被配置层正确识别为未知安全配置并拒绝启动。
 - **最终解法**：内部启动器变量改为 `PL_MINERU_GENERATION`，保留配置层“未知 `PAPERLENS_MINERU_*` 一律拒绝”的严格行为，并增加启动器文本回归断言。
 - **可复用规则**：受保护配置前缀只用于白名单中的公共配置；脚本内部状态必须使用不同前缀，不能为跑通而放宽未知键检查。
+
+### 2026-07-23：正式 Chrome 阻止命令行加载临时扩展
+- **出现位置**：Epic C 发布矩阵的 Chrome unpacked E2E。
+- **问题**：已安装的正式 Chrome 150 忽略/阻止 `--load-extension`，扩展页显示 `ERR_BLOCKED_BY_CLIENT`；Edge 使用相同构建可正常加载，排除产物和 manifest 问题。
+- **最终解法**：自动化矩阵改用 Google 官方 Chrome for Testing；正式 Chrome 留给打包扩展的人工发布验证。公网 arXiv 波动时拆分在线来源与本地上传/`file://` 矩阵，不把外站错误页算作产品失败。
+- **可复用规则**：Chromium 扩展 E2E 固定记录浏览器发行通道；unpacked 自动化优先 Chrome for Testing，不依赖正式 Chrome 的命令行开关。

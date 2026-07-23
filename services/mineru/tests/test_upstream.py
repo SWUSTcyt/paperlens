@@ -67,6 +67,8 @@ class UpstreamTests(unittest.TestCase):
             self.assertNotIn("PAPERLENS_MINERU_PORT", environment)
             self.assertEqual(environment["MINERU_MODEL_SOURCE"], "huggingface")
             self.assertEqual(environment["MINERU_API_MAX_CONCURRENT_REQUESTS"], "1")
+            self.assertEqual(environment["MODELSCOPE_CACHE"], str(root / "models" / "modelscope"))
+            self.assertEqual(environment["HF_HOME"], str(root / "models" / "huggingface"))
 
     def test_base_python_environment_keeps_current_venv_packages(self) -> None:
         environment = add_current_python_packages({"PYTHONPATH": "F:/custom"})

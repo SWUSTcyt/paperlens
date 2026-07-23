@@ -16,6 +16,7 @@ const CHROME_CANDIDATES = [
 const INTERACTIVE_PERMISSIONS = process.argv.includes('--interactive-permissions');
 const PHASE_C = process.argv.includes('--phase-c');
 const MINERU = process.argv.includes('--mineru');
+const OFFLINE = process.argv.includes('--offline');
 const UNSANDBOXED_BROWSER = process.env.PAPERLENS_CHROME_NO_SANDBOX === '1';
 
 async function main() {
@@ -95,7 +96,7 @@ try {
   await sidepanelClient.send('Page.enable');
   await waitDocumentReady(sidepanelClient);
 
-  if (!MINERU) {
+  if (!MINERU && !OFFLINE) {
     const absSmoke = await smokeArxivContent({
       port,
       sidepanelClient,
@@ -137,8 +138,10 @@ try {
       timeoutMs: 90_000,
     });
     results.push('PASS arXiv /pdf 解析（真实 pdf.js worker）');
-  } else {
+  } else if (MINERU) {
     results.push('SKIP 公网页面回归（由 test:phase-c:browser 独立覆盖）');
+  } else {
+    results.push('SKIP 公网页面回归（--offline，仅验证上传与 file:// 路径）');
   }
 
   await activateTarget(port, sidepanel.id);
