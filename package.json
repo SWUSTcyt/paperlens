@@ -16,6 +16,7 @@
     "test:phase-b:browser": "pnpm build && node tests/phaseB.browser-smoke.mjs",
     "test:phase-b:permissions": "pnpm build && node tests/phaseB.browser-smoke.mjs --interactive-permissions",
     "test:phase-c:browser": "pnpm build && node tests/phaseB.browser-smoke.mjs --phase-c",
+    "test:phase-c:browser:offline": "pnpm build && node tests/phaseB.browser-smoke.mjs --phase-c --offline",
     "test:mineru:browser": "pnpm build && node tests/phaseB.browser-smoke.mjs --mineru",
     "test:phase-d:ocr-poc": "node --test tests/pdfOcrPoc.test.mjs tests/mineruPoc.test.mjs && node tests/phaseD.ocr-poc.mjs validate",
     "test:mineru:client": "node --experimental-strip-types --test tests/mineruClient.test.mjs tests/pdfFormulaProvider.test.mjs",

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from paperlens_mineru.cli import default_config_path, initialize_config, main
 from paperlens_mineru.config import load_config
+from paperlens_mineru.lifecycle import DATA_MARKER_NAME
 
 
 class CliTests(unittest.TestCase):
@@ -23,6 +24,7 @@ class CliTests(unittest.TestCase):
             first_content = path.read_text(encoding="utf-8")
             second = initialize_config(path, data_root=root / "other")
             config = load_config(path, environ={})
+            marker_created = (root / "data" / DATA_MARKER_NAME).is_file()
 
         self.assertTrue(first.created)
         self.assertIsNotNone(first.token)
@@ -31,6 +33,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(path.read_text(encoding="utf-8") if path.exists() else first_content, first_content)
         self.assertEqual(config.access_token, first.token)
         self.assertEqual(config.data_root, root / "data")
+        self.assertTrue(marker_created)
 
     def test_cli_init_prints_token_once_and_check_config_is_redacted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

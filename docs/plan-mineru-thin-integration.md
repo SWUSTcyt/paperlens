@@ -1,9 +1,10 @@
 # MinerU pipeline 薄集成实施计划
 
-> 状态：**用户已批准实施与发布；Epic A（A1–A3）、Epic B（B1–B4）已过门，Epic C 待实施。**
+> 状态：**Epic A（A1–A3）、Epic B（B1–B4）与 Epic C（C1、C2、发布门 P0/P1）已过门。**
 > 依据：`docs/evaluations/pdf-ocr-poc-b-mineru.md` 的 P1 通过结果。
 > 目标：在不改变现有网页抽取和 PDF 解读能力的前提下，为任意 PDF 增加可取消、可回退、可人工核对的本地展示公式识别。
 > Epic B 验收证据：`docs/evaluations/mineru-thin-epic-b.md`。
+> Epic C1 验收证据：`docs/evaluations/mineru-thin-epic-c1.md`。
 
 ## 1. 冻结边界
 
@@ -221,12 +222,53 @@ OCR 结果先完整校验，再一次性替换 `formulas`、`sections[].formulaI
 - P2：裁剪图缩放与键盘可访问性。
 - P3：在 PDF 阅读器中自动定位 bbox（本轮不做）。
 
-### Epic C：交付与运维（B1 通过后再细化）
+### Epic C：交付与运维
 
-- Windows 从零安装/升级/卸载、服务启动与故障排查文档。
-- 真实 Edge/Chrome 回归：在线、上传、file、服务缺失、取消、超时、TTL 后裁剪失效。
+#### Milestone C1：Windows 可重复安装生命周期
+
+起始条件：Epic A/B 已通过 PR #1 合入 `main`；以干净 Windows、Python 3.12 与 uv 为默认环境，不依赖全局 Anaconda、CUDA 或 Docker。
+
+**Issue C1 — 从零安装与脱敏诊断（完成）**
+
+- 输入：现有源码版安装步骤、`paperlens-mineru init/check-config/serve`、冻结的 MinerU 3.4.4 依赖。
+- 输出：可重复执行的 Windows 安装入口、安装前置检查/脱敏诊断、从零安装与扩展连接验收记录。
+- 依赖：Epic A/B。
+- P0：不得修改全局 Anaconda/CUDA；不得覆盖已有配置或泄漏 token；失败安装可回收且不删除用户数据；服务仍只允许 `127.0.0.1`。
+- P1：干净 Windows 按单一路径可完成安装、`init`、配置校验、启动、`/v1/health ready` 与扩展“测试连接”；重复执行结果幂等；记录安装耗时与服务/模型磁盘占用。
+- P2：诊断输出自动脱敏，并能区分 Python/uv、依赖、配置、端口和模型就绪问题。
+- P3：GUI 安装器和 Docker。
+
+**Issue C2 — 升级、修复与卸载（完成）**
+
+- 输入：C1 安装入口和现有配置/任务/模型目录约定。
+- 输出：同版本修复、升级、保留数据卸载、显式完全清理流程及故障排查文档。
+- 依赖：C1。
+- P0：停止/卸载后不残留服务 worker 或占用端口；默认卸载不得误删配置、模型和任务数据；完全清理必须二次明确；升级失败时旧服务可恢复或扩展确定性回退 Phase C。
+- P1：实测修复安装、版本升级模拟、保留 token/config 卸载和完全清理；重装后扩展连接恢复；每条路径有可读错误与恢复步骤。
+- P2：可选的用户级快捷启动方式。
+- P3：系统级后台服务和自动更新。
+
+实现与验收（2026-07-23）：
+
+- 安装器继续使用候选 generation；候选完成配置、doctor、停服和端口验证后才切换。失败候选不修改 `current.txt`，版本升级模拟与同版本修复均通过。
+- 服务在已标记数据根目录写入不含 token 的状态文件；只有 PID、创建时间、可执行文件、配置路径和命令行全部匹配时才允许递归停止进程树，PID 复用或伪造状态一律拒绝。
+- 默认卸载只删除已标记运行时，配置、任务与 PaperLens 专用模型缓存全部保留；完整清理必须同时提供 `-PurgeData` 和精确短语 `DELETE PAPERLENS MINERU DATA`，且数据目录 marker 有效。
+- 真实 2.27 GB 运行时在 159.1 秒内完成“修复 → 运行中保留卸载 → 重装恢复 → 运行中完整清理”，每次结束均验证 17860 可独占绑定。
+- P2 由稳定的用户目录启动器 `paperlens-mineru.cmd` 提供；P3 系统服务和自动更新按计划延后。
+
+#### Milestone C2：发布矩阵与最终门禁（完成）
+
+- 真实 Edge/Chrome 回归：在线、上传、file、服务缺失、401、版本不兼容、取消、超时、切页竞态、TTL 后 crop 失效。
 - 薄集成发布门：P0/P1 全过、`pnpm compile`、`pnpm build`、65 条金标无回归、无敏感/本地产物入 Git。
 - 不默认编写 Docker 路径；若后续需要，作为独立 P2 Issue 申请。
+
+发布证据（2026-07-23）：
+
+- Edge 与 Chrome for Testing 均通过上传 PDF、`file://`、单栏 PDF、Markdown、Phase C 公式标识和推导链；Edge 另通过 arXiv `/abs`、`/html` 与 `/pdf` 在线回归。
+- Edge 与 Chrome for Testing 均用真实 MinerU 完成 Attention 原子增强：5 条展示公式、108 处行内公式、page+bbox、受控 crop 鉴权读取；随后在上游 worker 常驻时分别完成默认卸载与完整清理，端口均释放。
+- 服务缺失、401、版本不兼容、取消、超时、非法/TTL 后 crop，以及切页旧任务保护由 client/provider 单测和 `App.tsx` runId+URL 双门禁覆盖；失败不修改 Phase C 基线。
+- Python 61/61、MinerU client/provider 15/15、PDF 46/46、POC 13/13、`pnpm compile` 与 `pnpm build` 通过；13 篇 65 条金标和 P1 指标无回归。
+- 官方 Chrome 150 阻止命令行加载 unpacked 扩展，自动化改用 Google 官方 Chrome for Testing 151；后续在线复测遇到 arXiv 错误页，保留 Edge 已通过的在线证据并单独运行两款浏览器的离线来源矩阵。
 
 ## 6. 验收矩阵与发布门
 

@@ -1,9 +1,10 @@
 # PaperLens：MinerU pipeline 薄集成
 
-状态：**Epic A、Epic B 已过门；下一步进入 Epic C 交付与运维。** POC B、服务端与扩展真实浏览器闭环均通过冻结 P1，POC C 不启动。完整计划见 `docs/plan-mineru-thin-integration.md`。
+状态：**Epic A/B 已合入；Epic C 的 C1、C2 与发布门 P0/P1 已通过。** 完整标准与证据见 `docs/plan-mineru-thin-integration.md`。
 
-- Epic A（完成）：A1 schema/安全契约；A2 单任务服务与真实三篇/取消复测；A3 原子归一化、上下文、受控裁剪。Python 47/47，65 条金标 P1 通过，234 条候选/裁剪与 POC B 一致。
-- Epic B（完成）：严格 localhost client、上传前 health/版本门禁、Phase C 事务回退、真实进度/取消 UI、展示公式/page+bbox/crop 与 OCR 推导隔离。Attention 真实 Edge 闭环通过：5 条展示公式、108 处行内统计及鉴权裁剪图。
-- Epic C（下一步）：完善 Windows 从零安装/升级/卸载与故障排查，补取消/超时/TTL 后 crop 失效的发布级浏览器矩阵。Docker 非默认，arXiv TeX 仅预留 provider 衔接点。
+- 已完成：本地服务、扩展接入、事务回退、真实进度/取消、crop 与 OCR 隔离；Python 61/61、65 条金标 P1，以及 Edge/Chrome for Testing 真实 MinerU 闭环通过。
+- C1（完成）：Windows 隔离安装、幂等重装、失败保留旧运行时、脱敏 doctor；真实 health 与扩展连接通过。
+- C2（完成）：候选升级/修复、可信进程树停止、默认保留数据卸载、双确认完整清理、卸载后重装恢复。
+- 发布门（完成）：Edge/Chrome 上传与 `file://`、真实 5+108 MinerU 与鉴权 crop、失败回退单测、13 篇 65 条金标、compile/build 均通过。arXiv 在线链路已在 Edge 通过；后续复测时站点返回错误页，作为外部波动记录，不改变已通过证据。
 
-P0：不破坏 HTML/ar5iv、PDF 解读或 Phase C；不伪造进度；PDF/模型/crop/token 不进 Git。P1：所有失败确定性回退，取消无残留，POC B 指标与核心样本不下降。Epic C 仍按相同门禁推进，不以文档或环境困难降低标准。
+P0：不碰全局 Anaconda/CUDA；不泄漏 token/覆盖配置；失败可回收；仅监听 `127.0.0.1`；只终止带可信状态的自有进程。P3 系统服务、自动更新、GUI 与 Docker 保持 follow-up，不进入本轮。

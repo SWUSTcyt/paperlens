@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from contextlib import suppress
@@ -10,6 +11,8 @@ from typing import Mapping, Sequence
 
 from .api import create_app
 from .config import ConfigError, ServiceConfig, generate_access_token, load_config
+from .diagnostics import collect_diagnostics, format_diagnostics
+from .lifecycle import ensure_data_root_marker, lifecycle_info, service_instance, stop_service
 from .normalizer import MineruResultProcessor
 from .upstream import MineruApiSupervisor, MineruUpstreamRunner
 
@@ -32,6 +35,7 @@ def initialize_config(path: Path, *, data_root: Path | None = None) -> Bootstrap
 
     path = path.expanduser().resolve()
     if path.exists():
+        ensure_data_root_marker(load_config(path).data_root)
         return BootstrapResult(path=path, created=False, token=None)
     root = (data_root or path.parent).expanduser().resolve()
     token = generate_access_token()
@@ -59,6 +63,7 @@ def initialize_config(path: Path, *, data_root: Path | None = None) -> Bootstrap
         return BootstrapResult(path=path, created=False, token=None)
     except OSError as error:
         raise ConfigError("CONFIG_FILE_INVALID", "无法创建本地服务配置文件。") from error
+    ensure_data_root_marker(root)
     return BootstrapResult(path=path, created=True, token=token)
 
 
@@ -80,11 +85,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             config = load_config(config_path)
             print(f"配置有效：{config.host}:{config.port}，MinerU {config.mineru_version}/{config.backend}")
             return 0
+        if command == "doctor":
+            report = collect_diagnostics(config_path, check_health=args.health)
+            print(format_diagnostics(report))
+            return 0 if report.ok else 1
+        if command == "lifecycle-info":
+            print(json.dumps(lifecycle_info(config_path), ensure_ascii=False))
+            return 0
+        if command == "stop":
+            result = stop_service(config_path)
+            print("PaperLens MinerU 服务已停止。" if result.stopped else "PaperLens MinerU 服务未运行。")
+            return 0
         if command == "serve":
             result = initialize_config(config_path)
             _print_bootstrap(result)
             config = load_config(config_path)
-            return _serve(config)
+            return _serve(config, config_path)
     except ConfigError as error:
         print(f"{error.code}: {error}", file=sys.stderr)
         return 2
@@ -93,19 +109,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 2
 
 
-def _serve(config: ServiceConfig) -> int:
+def _serve(config: ServiceConfig, config_path: Path) -> int:
     import uvicorn
 
     supervisor = MineruApiSupervisor(config)
     runner = MineruUpstreamRunner(supervisor)
     app = create_app(config, runner=runner, result_processor=MineruResultProcessor())
-    uvicorn.run(
-        app,
-        host=config.host,
-        port=config.port,
-        access_log=False,
-        log_level="info",
-    )
+    with service_instance(config, config_path):
+        uvicorn.run(
+            app,
+            host=config.host,
+            port=config.port,
+            access_log=False,
+            log_level="info",
+        )
     return 0
 
 
@@ -121,9 +138,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="paperlens-mineru", description="PaperLens 本地 MinerU pipeline 服务")
     parser.add_argument("--config", help="TOML 配置路径；默认位于 LOCALAPPDATA/PaperLens/MinerU")
     subparsers = parser.add_subparsers(dest="command")
-    for name in ("serve", "init", "check-config"):
+    for name in ("serve", "init", "check-config", "stop", "lifecycle-info"):
         subparser = subparsers.add_parser(name)
         subparser.add_argument("--config", help="TOML 配置路径")
+    doctor = subparsers.add_parser("doctor")
+    doctor.add_argument("--config", help="TOML 配置路径")
+    doctor.add_argument("--health", action="store_true", help="同时验证已启动服务的 schema v1 health")
     subparsers.add_parser("generate-token")
     return parser
 

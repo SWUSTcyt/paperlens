@@ -17,3 +17,21 @@
 - **问题**：测试要求并不存在于 Spec 的 `PaperContent.recognitionSource`，而冻结模型只规定逐公式 `recognitionSource` 与文档级 `formulaRecognition.provider`。
 - **最终解法**：保留 TypeScript 对模型扩张的拦截，测试改为检查文档级 provider 与逐公式来源。
 - **可复用规则**：E2E 断言新增字段前必须回看冻结 Spec 与类型契约；测试不得自行扩张产品模型。
+
+### 2026-07-23：PowerShell 5.1 的 UTF-8 与重复 PATH 环境
+- **出现位置**：C1 Windows 安装器、关键路径验收脚本；此前 MinerU POC 子进程也需要环境大小写去重。
+- **问题**：PowerShell 5.1 把无 BOM 的 UTF-8 脚本按系统代码页解析；IDE/Codex 进程同时含 `Path` 与 `PATH` 时，`Env:` 枚举和 `Start-Process` 都可能抛重复键。
+- **最终解法**：`.ps1` 使用 UTF-8 BOM，显式设置控制台与 Python UTF-8；不枚举损坏的 `Env:`，而是在验收子进程内用 .NET 定点清除并重建 `PATH`。
+- **可复用规则**：Windows PowerShell 5.1 交付脚本必须做 BOM/UTF-8 语法与真实启动检查；从 IDE 启动后台进程前先处理大小写重复的 PATH。
+
+### 2026-07-23：内部环境变量撞上配置安全前缀
+- **出现位置**：C1 稳定启动器读取当前 generation。
+- **问题**：启动器临时变量曾命名为 `PAPERLENS_MINERU_GENERATION`，被配置层正确识别为未知安全配置并拒绝启动。
+- **最终解法**：内部启动器变量改为 `PL_MINERU_GENERATION`，保留配置层“未知 `PAPERLENS_MINERU_*` 一律拒绝”的严格行为，并增加启动器文本回归断言。
+- **可复用规则**：受保护配置前缀只用于白名单中的公共配置；脚本内部状态必须使用不同前缀，不能为跑通而放宽未知键检查。
+
+### 2026-07-23：正式 Chrome 阻止命令行加载临时扩展
+- **出现位置**：Epic C 发布矩阵的 Chrome unpacked E2E。
+- **问题**：已安装的正式 Chrome 150 忽略/阻止 `--load-extension`，扩展页显示 `ERR_BLOCKED_BY_CLIENT`；Edge 使用相同构建可正常加载，排除产物和 manifest 问题。
+- **最终解法**：自动化矩阵改用 Google 官方 Chrome for Testing；正式 Chrome 留给打包扩展的人工发布验证。公网 arXiv 波动时拆分在线来源与本地上传/`file://` 矩阵，不把外站错误页算作产品失败。
+- **可复用规则**：Chromium 扩展 E2E 固定记录浏览器发行通道；unpacked 自动化优先 Chrome for Testing，不依赖正式 Chrome 的命令行开关。
