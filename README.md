@@ -49,6 +49,8 @@ pnpm zip              # 打 zip 包以上架 Chrome Web Store
 
 本功能默认关闭，不影响现有 PDF 解析与 Phase C 回退。Windows 源码安装命令、配置位置和安全边界见 [`services/mineru/README.md`](./services/mineru/README.md)。启动 `paperlens-mineru serve` 后，在扩展设置页填写首次生成的 token，点“测试连接”，成功后勾选“对 PDF 启用本地 MinerU”。
 
+Windows 本地服务可通过 GitHub Releases 稳定通道自动或手动检查更新，操作说明见 [`services/mineru/README.md`](./services/mineru/README.md)；该通道不更新 Chrome 扩展本体。
+
 启用后，PDF 正文/章节仍由 pdf.js 先完成并立即可用于解读；MinerU 作为独立增强任务运行。失败、取消、超时或结果校验失败都保留 Phase C 基线，不会清空论文内容。
 
 ### 手动加载扩展

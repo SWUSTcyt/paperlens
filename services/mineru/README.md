@@ -74,12 +74,19 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 `SWUSTcyt/paperlens` GitHub Releases 稳定通道，最多每 24 小时一次。它只识别
 `mineru-v<SemVer>` 标签，以及同一 Release 下的
 `paperlens-mineru-windows-<SemVer>.zip` 和对应 `.zip.sha256`；预发布、任意仓库、
-任意 URL 和 Chrome 扩展本体都不在更新范围内。手动只读检查可在服务运行时执行：
+任意 URL 和 Chrome 扩展本体都不在更新范围内。首个稳定通道
+[`mineru-v0.1.0`](https://github.com/SWUSTcyt/paperlens/releases/tag/mineru-v0.1.0)
+已发布。手动只读检查可在服务运行时执行：
 
 ```powershell
 $updater = "$env:LOCALAPPDATA\PaperLens\MinerU\runtime\maintenance\update-windows.ps1"
 & $updater -Action CheckOnly
 ```
+
+已安装版本是 `0.1.0` 时应返回 `UPDATE_CURRENT`；低于稳定通道版本时返回
+`UPDATE_AVAILABLE`。该命令只检查，不下载或安装。
+2026-07-24 的 Windows 首次安装冒烟已验证 `health=ready`、本机版本与稳定通道均为
+`0.1.0`、`CheckOnly` 退出码为 0；同版本不会重复下载。
 
 立即更新在服务运行时会确定性跳过，不中断现有 job。需要立即应用时，先安全停止服务，
 再更新并重新运行登录任务：
@@ -105,8 +112,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 ```
 
 将输出 ZIP 与 `.zip.sha256` 上传到完全匹配的 `mineru-v<SemVer>` 稳定 Release。
-服务版本来自 `services/mineru/pyproject.toml`；打包器拒绝覆盖既有资产，除非显式
-使用 `-Force`。
+`0.1.0` 的正式资产已经发布；后续版本继续使用同一命名契约。服务版本来自
+`services/mineru/pyproject.toml`；打包器拒绝覆盖既有资产，除非显式使用 `-Force`。
 
 默认卸载先移除固定登录任务，再只删除运行时；配置、token、job 数据和
 `%LOCALAPPDATA%\PaperLens\MinerU\models` 下的专用模型缓存继续保留：

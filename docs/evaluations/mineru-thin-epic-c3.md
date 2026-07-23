@@ -10,8 +10,10 @@ Epic C3 的实现与本地验收通过，可以进入提交前人工复核。实
 薄服务的当前用户登录自启动和固定稳定通道更新；没有创建 Windows SCM 服务、要求
 管理员权限、迁移 `%LOCALAPPDATA%`/token，也没有更新 Chrome 扩展本体。
 
-当前固定仓库没有匹配 `mineru-v*` 的稳定 Release，因此首个生产资产发布后仍需执行
-一次真实 GitHub 下载与应用冒烟。该项不改变已冻结的实现或资产契约。
+首个稳定 Release
+[`mineru-v0.1.0`](https://github.com/SWUSTcyt/paperlens/releases/tag/mineru-v0.1.0)
+已发布，包含精确版本化 ZIP 与 SHA-256。2026-07-24 已完成本机首次安装、health
+和稳定通道只读检查；本机与通道同为 `0.1.0`，因此未触发下载或应用。
 
 ## 2. P0 验收
 
@@ -42,7 +44,8 @@ P0 结果：通过。
 | Python 完整测试 | 85/85 通过，包含显式启用的真实任务计划测试 |
 | 更新核心覆盖率 | `updates.py` 326 条可执行语句，62 条未覆盖，80.98% |
 | 真实任务闭环 | 注册两次、契约核验、`health ready`、重复运行保持同一 PID、停止和移除通过 |
-| 真实固定通道检查 | 返回 `UPDATE_CURRENT`；当前无匹配稳定 Release |
+| 稳定通道发布 | `mineru-v0.1.0` 为非 Draft、非 Prerelease，两个资产齐全 |
+| 本机 A 冒烟 | 首次安装成功，`serviceVersion=0.1.0`、`health=ready`、`CheckOnly=UPDATE_CURRENT`、退出码 0；结束后服务停止且 17860 释放 |
 | 候选更新 | 有效候选切换到新 generation；doctor 失败候选保持旧 generation |
 | 发布资产 | 生成 `paperlens-mineru-windows-0.1.0.zip` 及匹配 SHA-256 |
 | TypeScript | `pnpm compile` 通过 |
@@ -54,8 +57,8 @@ P0 结果：通过。
 运行中跳过、安装失败回滚均有确定性测试。手动 `CheckOnly` 可在服务运行时执行；
 `UpdateNow` 不会中断运行中的 job。
 
-P1/P2 结果：本地工程验收通过；首个生产 Release 的 GitHub 端到端应用列为发布时
-人工冒烟。
+P1/P2 结果：本地工程验收与生产通道 A 冒烟通过；真正下载与应用需要稳定通道出现
+高于本机 `0.1.0` 的版本后再验证。
 
 ## 4. P3 与范围复核
 

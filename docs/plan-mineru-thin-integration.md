@@ -287,7 +287,7 @@ OCR 结果先完整校验，再一次性替换 `formulas`、`sections[].formulaI
 - 登录维护在服务启动前检查固定 `SWUSTcyt/paperlens` 稳定 Release，24 小时内不重复联网；服务已运行时更新动作立即跳过，检查、下载或安装失败时继续启动旧 generation，不中断现有任务。
 - 更新只接受 `mineru-v<SemVer>`、精确版本化 ZIP 与 `.sha256`。下载大小、最终 GitHub 域、SHA-256、安全 ZIP 根、Windows 路径/设备名、包名和版本均通过后，才调用 C2 候选安装器；失败候选不切换 `current.txt`。
 - Python 85/85（含真实任务测试）通过；`updates.py` 语句覆盖率 80.98%；`pnpm compile`、`pnpm build`、`uv build services/mineru` 通过。固定通道真实检查返回 `UPDATE_CURRENT`，状态文件不含 token 或绝对路径。
-- 当前固定仓库尚无匹配的 `mineru-v*` 稳定资产，因此“从 GitHub 实际下载并应用首个生产包”保留为首发部署冒烟；本地已分别验证 Release 打包/哈希、网络与恶意包契约、候选切换/失败回滚及真实服务 health，不降低发布资产契约。
+- 首个稳定通道 `mineru-v0.1.0` 已发布，包含精确版本化 ZIP 与 SHA-256 资产。2026-07-24 本机首次安装、`health=ready` 与固定通道 `CheckOnly=UPDATE_CURRENT` 的 A 冒烟通过；同版本不会重复下载，真正下载/应用保留到后续更高版本。本地已分别验证 Release 打包/哈希、网络与恶意包契约、候选切换/失败回滚及真实服务 health，不降低发布资产契约。
 
 #### Milestone C2：发布矩阵与最终门禁（完成）
 

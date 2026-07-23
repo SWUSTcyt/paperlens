@@ -8,4 +8,4 @@
 - C3.1（完成）：当前用户有限权限的任务计划登录自启动；幂等注册/状态/移除，服务运行时不重复启动。
 - C3.2（完成）：固定 GitHub Releases 稳定通道；登录前最多 24 小时检查一次，版本化 ZIP+SHA-256，安全解包并复用候选安装/回滚；提供手动检查/立即更新。
 
-验收：Python 85/85、更新核心覆盖率 80.98%、真实任务登录契约/health/重复启动/清理通过，`pnpm compile`、`pnpm build`、`uv build` 通过。首个 `mineru-v*` 远端资产发布后仍需做一次生产通道冒烟；当前仓库没有匹配 Release。
+验收：Python 85/85、更新核心覆盖率 80.98%、真实任务登录契约/health/重复启动/清理通过，`pnpm compile`、`pnpm build`、`uv build` 通过。首个稳定通道 `mineru-v0.1.0` 已发布；本机首次安装、health 与 `CheckOnly=UPDATE_CURRENT` 的 A 冒烟通过，真正下载/应用待后续更高版本。
