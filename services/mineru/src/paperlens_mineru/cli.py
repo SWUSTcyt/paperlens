@@ -6,15 +6,17 @@ import os
 import sys
 from contextlib import suppress
 from dataclasses import dataclass
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Mapping, Sequence
 
 from .api import create_app
 from .config import ConfigError, ServiceConfig, generate_access_token, load_config
 from .diagnostics import collect_diagnostics, format_diagnostics
-from .lifecycle import ensure_data_root_marker, lifecycle_info, service_instance, stop_service
+from .lifecycle import ensure_data_root_marker, lifecycle_info, service_instance, service_status, stop_service
 from .normalizer import MineruResultProcessor
 from .upstream import MineruApiSupervisor, MineruUpstreamRunner
+from .updates import UpdateError, check_for_update, prepare_update
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if command == "generate-token":
             print(generate_access_token())
             return 0
+        if command == "version":
+            print(json.dumps({"schemaVersion": 1, "serviceVersion": _service_version()}))
+            return 0
         if command == "init":
             result = initialize_config(config_path)
             _print_bootstrap(result)
@@ -92,6 +97,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         if command == "lifecycle-info":
             print(json.dumps(lifecycle_info(config_path), ensure_ascii=False))
             return 0
+        if command == "status":
+            status = service_status(config_path)
+            print(json.dumps({"schemaVersion": 1, "running": status.running}))
+            return 0
+        if command in ("update-check", "update-prepare"):
+            config = load_config(config_path)
+            ensure_data_root_marker(config.data_root)
+            if command == "update-check":
+                update = check_for_update(
+                    _service_version(),
+                    config.data_root,
+                    scheduled=args.scheduled,
+                )
+            else:
+                update = prepare_update(
+                    _service_version(),
+                    config.data_root,
+                    Path(args.destination),
+                    scheduled=args.scheduled,
+                )
+            print(json.dumps(update.to_public_dict(), ensure_ascii=False))
+            return 0
         if command == "stop":
             result = stop_service(config_path)
             print("PaperLens MinerU 服务已停止。" if result.stopped else "PaperLens MinerU 服务未运行。")
@@ -101,6 +128,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             _print_bootstrap(result)
             config = load_config(config_path)
             return _serve(config, config_path)
+    except UpdateError as error:
+        print(f"{error.code}: 自动更新操作失败。", file=sys.stderr)
+        return 2
     except ConfigError as error:
         print(f"{error.code}: {error}", file=sys.stderr)
         return 2
@@ -134,16 +164,28 @@ def _print_bootstrap(result: BootstrapResult) -> None:
     print(result.token)
 
 
+def _service_version() -> str:
+    return package_version("paperlens-mineru")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="paperlens-mineru", description="PaperLens 本地 MinerU pipeline 服务")
     parser.add_argument("--config", help="TOML 配置路径；默认位于 LOCALAPPDATA/PaperLens/MinerU")
     subparsers = parser.add_subparsers(dest="command")
-    for name in ("serve", "init", "check-config", "stop", "lifecycle-info"):
+    for name in ("serve", "init", "check-config", "status", "stop", "lifecycle-info"):
         subparser = subparsers.add_parser(name)
         subparser.add_argument("--config", help="TOML 配置路径")
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--config", help="TOML 配置路径")
     doctor.add_argument("--health", action="store_true", help="同时验证已启动服务的 schema v1 health")
+    update_check = subparsers.add_parser("update-check")
+    update_check.add_argument("--config", help="TOML 配置路径")
+    update_check.add_argument("--scheduled", action="store_true", help="应用 24 小时登录检查间隔")
+    update_prepare = subparsers.add_parser("update-prepare")
+    update_prepare.add_argument("--config", help="TOML 配置路径")
+    update_prepare.add_argument("--destination", required=True, help="受信任数据目录内的新暂存目录")
+    update_prepare.add_argument("--scheduled", action="store_true", help="应用 24 小时登录检查间隔")
+    subparsers.add_parser("version")
     subparsers.add_parser("generate-token")
     return parser
 

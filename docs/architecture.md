@@ -49,6 +49,7 @@ PaperLens 是一个 Chrome Manifest V3 扩展，在 **arXiv 论文页**（`/abs`
 - **Service Worker**（`entrypoints/background.ts` + `src/llm/bgHandler.ts`）：只做两件事——(1) 点击图标打开 SidePanel；(2) 承载 LLM 流式 Port，把 SidePanel 的对话请求转成对各 Provider 的 `fetch` + SSE，再流回。**API Key 只在这里读取和使用，绝不注入页面。**
 - **Options 页**（`entrypoints/options/`）：BYOK 配置（各 Provider 的 Key、模型、为解读/推导分别绑定模型、测试连接）。
 - **MinerU 本地服务**（`services/mineru/`）：独立 Python 3.12 进程，只监听 `127.0.0.1`。SidePanel 用 bearer token 直接访问；服务负责受监管 worker、真实阶段、取消/超时、结果归一化与受控 crop。
+- **MinerU Windows 登录维护**：安装器注册固定的当前用户 `Interactive + Limited` 任务，不使用 SCM 或管理员权限。登录入口先只读确认可信服务状态；未运行时至多每 24 小时检查固定 GitHub Release，校验版本化 ZIP+SHA-256 并复用候选 generation 安装，然后启动服务。该路径不更新扩展本体。
 
 ### 为什么 LLM 走 Service Worker 而不是 SidePanel 直接 fetch？
 
@@ -121,6 +122,15 @@ src/
   util/tokenEstimate.ts    轻量 token 估算 + 截断
 
 services/mineru/           Python 3.12 + MinerU 3.4.4 pipeline 本地薄服务
+  src/paperlens_mineru/
+    lifecycle.py           可信实例状态、只读 status、安全进程树停止
+    updates.py             固定稳定 Release、限频、哈希与安全 ZIP
+  scripts/
+    install-windows.ps1    候选 generation 安装/修复与任务注册
+    manage-windows-task.ps1 当前用户登录任务注册/状态/运行/移除
+    startup-windows.ps1    登录更新失败回退与服务启动
+    update-windows.ps1     CheckOnly/UpdateNow/24 小时登录更新编排
+    package-windows-release.ps1 版本化 ZIP 与 SHA-256 资产生产
 ```
 
 ---

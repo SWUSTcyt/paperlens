@@ -1,12 +1,12 @@
 # PaperLens MinerU 本地服务
 
-该目录承载 PaperLens 的本地 MinerU 3.4.4 `pipeline` 薄服务。当前 **Epic A（服务）、Epic B（扩展接入）与 Epic C（Windows 完整生命周期和发布门）均已通过 P0/P1**：HTTP job、真实状态、取消/超时、进程清理、结果归一化、受控裁剪端点、扩展内确定性回退，以及 Windows 隔离安装、升级/修复、两种卸载和脱敏诊断均已落地。
+该目录承载 PaperLens 的本地 MinerU 3.4.4 `pipeline` 薄服务。当前 **Epic A（服务）、Epic B（扩展接入）与 Epic C（Windows 完整生命周期、用户级后台、稳定更新和发布门）均已通过 P0/P1**：HTTP job、真实状态、取消/超时、进程清理、结果归一化、受控裁剪端点、扩展内确定性回退，以及 Windows 隔离安装、升级/修复、两种卸载、脱敏诊断、当前用户登录自启动和固定稳定通道更新均已落地。
 
 A2/A3 提供 `/v1/health`、`POST/GET/DELETE /v1/jobs`、`POST /v1/jobs/{id}/cancel` 和 `GET /v1/jobs/{id}/crops/{cropId}`。服务对外固定监听 127.0.0.1；内部监督一个常驻 MinerU API 子进程以复用模型。MinerU 3.4.4 没有稳定页级状态 API，因此 `parsing` 只报告真实阶段与耗时，不返回推算页百分比。
 
 成功结果只收录展示/编号公式；行内公式只写入 `inlineFormulaCount`。每条展示公式返回 1-based `page`、0–1000 `bbox`、受控 `cropId`、真实标题栈和邻近正文。缺页、冲突 JSON、越界坐标、非法图片路径或坏图片会使整份结果以 `RESULT_INVALID` 失败，不交付半份数据。
 
-## Windows 安装与生命周期（C1/C2）
+## Windows 安装、后台启动与生命周期（C1/C2/C3）
 
 需要 Windows PowerShell 5.1+、[uv](https://docs.astral.sh/uv/) 和足够的模型磁盘空间。安装入口让 uv 使用隔离的 Python 3.12，不读取或修改全局 Anaconda/CUDA。首次安装及首次任务会下载/载入 MinerU 模型，可能耗时数分钟；不要把模型、配置或任务目录放进 Git。
 
@@ -49,7 +49,67 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 & "$env:LOCALAPPDATA\PaperLens\MinerU\runtime\paperlens-mineru.cmd" stop
 ```
 
-默认卸载只删除运行时，保留配置、token、任务和 `%LOCALAPPDATA%\PaperLens\MinerU\models` 下的专用模型缓存：
+安装器默认注册固定的 `PaperLens MinerU` 当前用户登录任务：任务以
+`Interactive + Limited` 权限隐藏运行，不要求管理员权限，也不会创建 Windows SCM
+服务。查看状态、立即运行或显式移除：
+
+```powershell
+$manager = "$env:LOCALAPPDATA\PaperLens\MinerU\runtime\maintenance\manage-windows-task.ps1"
+& $manager -Action Status
+& $manager -Action Run
+& $manager -Action Unregister
+```
+
+移除后可用 `-Action Register` 幂等恢复。只想安装运行时而暂不注册登录任务时，可给
+`install-windows.ps1` 传入 `-SkipStartupTask`。真实验证“注册 → health ready →
+重复运行不换进程 → 停止 → 移除 → 端口释放”：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File services/mineru/examples/verify_windows_autostart.ps1 `
+  -RemoveTaskAfter
+```
+
+登录维护入口只在服务未运行时检查固定的
+`SWUSTcyt/paperlens` GitHub Releases 稳定通道，最多每 24 小时一次。它只识别
+`mineru-v<SemVer>` 标签，以及同一 Release 下的
+`paperlens-mineru-windows-<SemVer>.zip` 和对应 `.zip.sha256`；预发布、任意仓库、
+任意 URL 和 Chrome 扩展本体都不在更新范围内。手动只读检查可在服务运行时执行：
+
+```powershell
+$updater = "$env:LOCALAPPDATA\PaperLens\MinerU\runtime\maintenance\update-windows.ps1"
+& $updater -Action CheckOnly
+```
+
+立即更新在服务运行时会确定性跳过，不中断现有 job。需要立即应用时，先安全停止服务，
+再更新并重新运行登录任务：
+
+```powershell
+$runtime = "$env:LOCALAPPDATA\PaperLens\MinerU\runtime"
+& "$runtime\paperlens-mineru.cmd" stop
+& "$runtime\maintenance\update-windows.ps1" -Action UpdateNow
+& "$runtime\maintenance\manage-windows-task.ps1" -Action Run
+```
+
+更新器限制下载/解压大小，拒绝路径穿越、链接、Windows 设备名、重复路径、错误包根和
+版本不一致；只有 SHA-256 通过后才调用 C2 候选安装器。网络、校验或候选安装失败时，
+旧 generation 保持不变，登录流程继续启动旧服务。脱敏状态保存在数据根的
+`updates/update-state.json`，不含 token 或绝对路径。
+
+发布者用固定打包器生成两个 Release 资产：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File services/mineru/scripts/package-windows-release.ps1 `
+  -OutputDirectory local-artifacts/mineru-release
+```
+
+将输出 ZIP 与 `.zip.sha256` 上传到完全匹配的 `mineru-v<SemVer>` 稳定 Release。
+服务版本来自 `services/mineru/pyproject.toml`；打包器拒绝覆盖既有资产，除非显式
+使用 `-Force`。
+
+默认卸载先移除固定登录任务，再只删除运行时；配置、token、job 数据和
+`%LOCALAPPDATA%\PaperLens\MinerU\models` 下的专用模型缓存继续保留：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -73,7 +133,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -WorkRoot "$PWD\local-artifacts\mineru-c2-lifecycle"
 ```
 
-不要手动删除运行时、配置、模型或任务目录。系统级后台服务与自动更新属于 P3 follow-up，当前版本不提供。
+不要手动删除运行时、配置、模型或任务目录。真正的 Windows SCM、管理员权限、多用户
+共享服务、代码签名、差分/测试通道和 Chrome 扩展本体更新仍不提供。
 
 若用户显式用 `MODELSCOPE_CACHE` 或 `HF_HOME` 指向数据根目录之外的共享缓存，完整清理不会删除该外部目录，避免影响其他程序；需要由目录所有者另行清理。
 
@@ -145,7 +206,9 @@ $env:PYTHONPATH = (Resolve-Path 'services/mineru/src').Path
 python -m unittest discover -s services/mineru/tests -v
 ```
 
-测试覆盖配置优先级、固定 localhost、安全 token、正常/空公式结果、非法 bbox/页码/路径、版本不兼容、认证失败、状态机、取消/超时、结果原子发布和裁剪鉴权。
+测试覆盖配置优先级、固定 localhost、安全 token、正常/空公式结果、非法 bbox/页码/路径、
+版本不兼容、认证失败、状态机、取消/超时、结果原子发布和裁剪鉴权，以及当前用户任务
+契约、24 小时间隔、固定 Release、SHA-256、安全 ZIP、并发锁和候选回滚。
 
 65 条金标重放：
 

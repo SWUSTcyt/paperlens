@@ -110,6 +110,25 @@ try {
         throw "未找到 PaperLens MinerU 配置。"
     }
 
+    $failureStage = "移除登录任务"
+    $taskManager = Join-Path $install "maintenance\manage-windows-task.ps1"
+    if (Test-Path -LiteralPath $taskManager -PathType Leaf) {
+        $powershell = Join-Path $PSHOME "powershell.exe"
+        & $powershell `
+            "-NoProfile" `
+            "-ExecutionPolicy" "Bypass" `
+            "-File" $taskManager `
+            "-Action" "Unregister" `
+            "-InstallRoot" $install `
+            "-ConfigPath" $config | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "无法安全移除 PaperLens MinerU 登录任务。"
+        }
+    }
+    elseif ($null -ne (Get-ScheduledTask -TaskName "PaperLens MinerU" -TaskPath "\" -ErrorAction SilentlyContinue)) {
+        throw "运行时缺少任务管理入口，拒绝留下无法验证的登录任务。"
+    }
+
     $failureStage = "验证数据目录"
     $lifecycleJson = (& $launcher "lifecycle-info" "--config" $config | Out-String)
     if ($LASTEXITCODE -ne 0) {
