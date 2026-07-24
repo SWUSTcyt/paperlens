@@ -12,7 +12,13 @@ import { detectKind } from '../../src/extractors/arxiv';
 import { extractPdf } from '../../src/pdf/extractPdf';
 import type { PdfExtractionProgress } from '../../src/pdf/progress';
 import { assertPdfBytes, buildUploadCacheKey } from '../../src/pdf/sourceUrl';
-import { loadPageCache, savePageCache } from '../../src/storage/cache';
+import {
+  loadPageCache,
+  loadTabDocumentBinding,
+  normalizePageCacheKey,
+  savePageCache,
+  saveTabDocumentBinding,
+} from '../../src/storage/cache';
 import { loadSettings, onSettingsChanged } from '../../src/storage/settings';
 import {
   enhancePdfFormulas,
@@ -28,8 +34,13 @@ type TabKey = 'summary' | 'derivation' | 'export';
 
 interface PageState {
   kind: 'abs' | 'html' | 'ar5iv' | 'pdf' | 'unknown';
+  /** 当前文档 URL；上传 PDF 使用合成的 pdf: 缓存键。 */
   url: string;
   title: string;
+  /** 当前浏览器标签页身份，用于恢复绑定在该标签页上的上传 PDF。 */
+  tabId?: number;
+  /** 浏览器标签页真实 URL；上传 PDF 时与 url 不同。 */
+  tabUrl: string;
 }
 
 interface ExtractFailure {
@@ -61,44 +72,72 @@ export default function App() {
   const [extractError, setExtractError] = useState<ExtractFailure | null>(null);
   const [summary, setSummary] = useState<SummaryResult | null>(null);
   const [derivations, setDerivations] = useState<Record<number, DerivationResult>>({});
-  // 已完成"缓存恢复"的 URL：用于门控持久化，避免在恢复完成前把空状态写回缓存
-  const [hydratedUrl, setHydratedUrl] = useState<string>('');
+  // 已完成"缓存恢复"的文档键：用于门控持久化，避免恢复前把空状态写回缓存
+  const [hydratedKey, setHydratedKey] = useState<string>('');
   // 是否尚未配置任何 Provider 的 API Key（用于首次使用引导）
   const [needsApiKey, setNeedsApiKey] = useState(false);
-  // 当前页面 URL 的引用，供异步切换时判断是否已被后续切换覆盖
-  const currentUrlRef = useRef<string>('');
+  // 切页监听只注册一次，所有判断必须通过 ref 读取最新状态，避免旧闭包重复恢复同一页。
+  const currentDocumentKeyRef = useRef<string>('');
+  const currentPageRef = useRef<PageState | null>(null);
+  const activeSyncRef = useRef(0);
   const mineruRunRef = useRef(0);
   const mineruAbortRef = useRef<AbortController | null>(null);
+  const summaryRef = useRef<SummaryResult | null>(null);
 
-  // 切换到某个页面：更新页面信息，并按 URL 从会话缓存恢复已生成的内容
+  // 切换到某个页面：更新页面信息，并按稳定文档键从会话缓存恢复已生成的内容
   async function switchToPage(next: PageState) {
-    if (next.url === currentUrlRef.current && page) return; // 同一页，无需切换
+    const nextKey = normalizePageCacheKey(next.url);
+    if (nextKey === currentDocumentKeyRef.current && currentPageRef.current) {
+      currentPageRef.current = next;
+      setPage(next);
+      return;
+    }
     mineruRunRef.current += 1;
     mineruAbortRef.current?.abort();
     mineruAbortRef.current = null;
     setMineruState(null);
-    currentUrlRef.current = next.url;
+    currentDocumentKeyRef.current = nextKey;
+    currentPageRef.current = next;
     setPage(next);
     setExtractError(null);
 
     const cache = next.url ? await loadPageCache(next.url) : null;
     // 若加载期间用户又切换了页面，放弃本次恢复，避免把旧页数据套到新页
-    if (currentUrlRef.current !== next.url) return;
+    if (currentDocumentKeyRef.current !== nextKey) return;
 
-    setPaper(cache?.paper ?? null);
-    setSummary(cache?.summary ?? null);
-    setDerivations(cache?.derivations ?? {});
-    setHydratedUrl(next.url);
+    const restoredPaper = cache?.paper ?? null;
+    const restoredSummary = cache?.summary ?? null;
+    const restoredDerivations = cache?.derivations ?? {};
+    summaryRef.current = restoredSummary;
+    setPaper(restoredPaper);
+    setSummary(restoredSummary);
+    setDerivations(restoredDerivations);
+    setHydratedKey(nextKey);
   }
 
   // 同步"当前活动标签页"的页面状态（切标签 / 页内跳转 / content 通知时调用）
   async function syncActiveTab() {
+    const syncId = ++activeSyncRef.current;
     try {
       const st = await refreshActiveTab();
-      await switchToPage(st);
+      if (activeSyncRef.current !== syncId) return;
+      const binding = st.tabId == null
+        ? null
+        : await loadTabDocumentBinding(st.tabId, st.tabUrl);
+      if (activeSyncRef.current !== syncId) return;
+      await switchToPage(binding
+        ? {
+            kind: 'pdf',
+            url: binding.documentKey,
+            title: binding.title,
+            tabId: st.tabId,
+            tabUrl: st.tabUrl,
+          }
+        : st);
     } catch (err) {
       console.warn('[PaperLens] 获取当前页面信息失败：', err);
-      await switchToPage({ kind: 'unknown', url: '', title: '' });
+      if (activeSyncRef.current !== syncId) return;
+      await switchToPage({ kind: 'unknown', url: '', title: '', tabUrl: '' });
     }
   }
 
@@ -139,16 +178,20 @@ export default function App() {
 
   useEffect(() => () => mineruAbortRef.current?.abort(), []);
 
-  // 抽取/解读/推导结果变化时，写入该 URL 的会话缓存（恢复完成后才写，避免覆盖）
   useEffect(() => {
-    if (!page?.url || hydratedUrl !== page.url) return;
+    summaryRef.current = summary;
+  }, [summary]);
+
+  // 抽取/解读/推导结果变化时，写入该文档的会话缓存（恢复完成后才写，避免覆盖）
+  useEffect(() => {
+    if (!page?.url || hydratedKey !== normalizePageCacheKey(page.url)) return;
     void savePageCache(page.url, {
       paper,
       summary,
       derivations,
       savedAt: Date.now(),
     });
-  }, [page?.url, hydratedUrl, paper, summary, derivations]);
+  }, [page?.url, hydratedKey, paper, summary, derivations]);
 
   // 检查是否已配置任一 Provider 的 API Key；设置变更时实时刷新引导条
   useEffect(() => {
@@ -177,7 +220,7 @@ export default function App() {
   async function startMineruEnhancement(
     baseline: PaperContent,
     buffer: ArrayBuffer,
-    targetUrl: string,
+    targetKey: string,
     filename: string,
   ) {
     const runId = ++mineruRunRef.current;
@@ -188,13 +231,13 @@ export default function App() {
     try {
       settings = await loadSettings();
     } catch {
-      if (mineruRunRef.current === runId && currentUrlRef.current === targetUrl) {
+      if (mineruRunRef.current === runId && currentDocumentKeyRef.current === targetKey) {
         mineruAbortRef.current = null;
         setMineruState({ stage: 'fallback', elapsedMs: 0, fallbackReason: 'config-invalid' });
       }
       return;
     }
-    if (mineruRunRef.current !== runId || currentUrlRef.current !== targetUrl) return;
+    if (mineruRunRef.current !== runId || currentDocumentKeyRef.current !== targetKey) return;
     if (!settings.mineru.enabled) {
       mineruAbortRef.current = null;
       setMineruState(null);
@@ -210,16 +253,30 @@ export default function App() {
       signal: controller.signal,
       filename,
       onStatus: (status) => {
-        if (mineruRunRef.current !== runId || currentUrlRef.current !== targetUrl) return;
+        if (mineruRunRef.current !== runId || currentDocumentKeyRef.current !== targetKey) return;
         setMineruState({ stage: status.stage, elapsedMs: status.elapsedMs });
       },
     });
-    if (mineruRunRef.current !== runId || currentUrlRef.current !== targetUrl) return;
+    if (mineruRunRef.current !== runId || currentDocumentKeyRef.current !== targetKey) return;
     mineruAbortRef.current = null;
     if (outcome.kind === 'enhanced') {
+      const nextDerivations = {};
       setPaper(outcome.paper);
-      setDerivations({});
+      setDerivations(nextDerivations);
       setMineruState({ stage: 'completed', elapsedMs: Date.now() - startedAt });
+      const saved = await savePageCache(targetKey, {
+        paper: outcome.paper,
+        summary: summaryRef.current,
+        derivations: nextDerivations,
+        savedAt: Date.now(),
+      });
+      if (mineruRunRef.current === runId
+        && currentDocumentKeyRef.current === targetKey
+        && !saved) {
+        setExtractError({
+          message: 'MinerU 增强已完成，但会话缓存保存失败；切换页面后可能无法恢复结果。',
+        });
+      }
     } else if (outcome.kind === 'fallback') {
       setMineruState({
         stage: 'fallback',
@@ -244,6 +301,7 @@ export default function App() {
   async function handleExtract() {
     if (page?.url.startsWith('pdf:')) return;
     const targetUrl = page?.url ?? '';
+    const targetKey = normalizePageCacheKey(targetUrl);
     const targetTitle = page?.title ?? 'paper.pdf';
     if (page?.kind === 'pdf') {
       mineruRunRef.current += 1;
@@ -260,13 +318,26 @@ export default function App() {
         ? await extractPdfSourceFromUrl(page.url, page.title, { onProgress: setPdfProgress })
         : null;
       const data = pdfSource?.paper ?? await requestExtractFromActiveTab();
-      if (targetUrl && currentUrlRef.current !== targetUrl) return;
+      if (targetKey && currentDocumentKeyRef.current !== targetKey) return;
+      summaryRef.current = null;
       setPaper(data);
       // 重新抽取视为对当前页的一次刷新，清空旧的解读与推导
       setSummary(null);
       setDerivations({});
       if (pdfSource) {
-        void startMineruEnhancement(data, pdfSource.buffer, targetUrl, targetTitle || 'paper.pdf');
+        const saved = await savePageCache(targetKey, {
+          paper: data,
+          summary: null,
+          derivations: {},
+          savedAt: Date.now(),
+        });
+        if (currentDocumentKeyRef.current !== targetKey) return;
+        if (!saved) {
+          setExtractError({
+            message: 'PDF 已解析，但会话缓存保存失败；切换页面后可能无法恢复结果。',
+          });
+        }
+        void startMineruEnhancement(data, pdfSource.buffer, targetKey, targetTitle || 'paper.pdf');
       }
     } catch (err) {
       setExtractError({
@@ -290,11 +361,37 @@ export default function App() {
       assertPdfBytes(buffer);
       const cacheKey = await buildUploadCacheKey(file.name, file.size, buffer);
       const data = await extractPdf(buffer, cacheKey, { onProgress: setPdfProgress });
-      await switchToPage({ kind: 'pdf', url: cacheKey, title: file.name });
+      const sourceTabUrl = page?.tabUrl ?? page?.url ?? '';
+      const bindingSaved = page?.tabId == null
+        ? false
+        : await saveTabDocumentBinding(page.tabId, {
+            documentKey: cacheKey,
+            sourceTabUrl,
+            title: file.name,
+          });
+      await switchToPage({
+        kind: 'pdf',
+        url: cacheKey,
+        title: file.name,
+        tabId: page?.tabId,
+        tabUrl: sourceTabUrl,
+      });
+      summaryRef.current = null;
       setPaper(data);
       setSummary(null);
       setDerivations({});
-      setExtractError(null);
+      const cacheSaved = await savePageCache(cacheKey, {
+        paper: data,
+        summary: null,
+        derivations: {},
+        savedAt: Date.now(),
+      });
+      if (currentDocumentKeyRef.current !== cacheKey) return;
+      setExtractError(bindingSaved && cacheSaved
+        ? null
+        : {
+            message: 'PDF 已解析，但会话恢复信息保存失败；切换页面后可能无法恢复结果。',
+          });
       void startMineruEnhancement(data, buffer, cacheKey, file.name);
     } finally {
       setExtracting(false);
@@ -612,7 +709,13 @@ async function refreshActiveTab(): Promise<PageState> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url ?? '';
   const title = tab?.title ?? '';
-  return { kind: classify(url, title), url, title };
+  return {
+    kind: classify(url, title),
+    url,
+    title,
+    tabId: tab?.id,
+    tabUrl: url,
+  };
 }
 
 // 复用抽取器里的 detectKind，避免页面类型判定逻辑在两处漂移
