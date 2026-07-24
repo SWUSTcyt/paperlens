@@ -282,6 +282,18 @@ try {
       throw new Error('MinerU 公式列表未显示行内统计或页码定位。');
     }
     results.push('PASS MinerU 公式列表、page+bbox 元数据与鉴权裁剪图');
+
+    const awayTarget = await newTarget(port, 'about:blank');
+    await activateTarget(port, awayTarget.id);
+    await waitForText(sidepanelClient, '当前页面不是可识别的论文页面', 15_000);
+    await activateTarget(port, sidepanel.id);
+    await waitForText(sidepanelClient, 'MinerU 本地识别（OCR）', 15_000);
+    const restoredMineruUi = await sidepanelClient.evaluate("document.body?.innerText || ''");
+    if (!restoredMineruUi.includes('正文另统计 108 处行内公式')) {
+      throw new Error('切换页面后未恢复上传 PDF 的 MinerU OCR 结果。');
+    }
+    results.push('PASS MinerU 完成后切页恢复上传 PDF 公式结果');
+
     await clickButton(sidepanelClient, '论文解读');
     await sidepanelClient.evaluate(`chrome.storage.local.set({
       'paperlens.settings': {
