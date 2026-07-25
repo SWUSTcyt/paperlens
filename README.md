@@ -27,26 +27,36 @@
 
 ## 快速开始
 
-### 加载扩展并完成首次使用
+### 下载并加载扩展
 
-1. 找到已经构建好的 `.output/chrome-mv3/` 目录
-2. 打开 Chrome → `chrome://extensions`
-3. 右上角开启「开发者模式」
-4. 点击「加载已解压的扩展程序」，选择 `.output/chrome-mv3/` 目录
-5. 打开任一论文来源，例如：
+1. 打开 [`paperlens-v0.0.1`](https://github.com/SWUSTcyt/paperlens/releases/tag/paperlens-v0.0.1)
+   发布页，下载 `paperlens-0.0.1-chrome.zip`；需要核对完整性时可一并下载同名
+   `.sha256` 文件
+2. 将 ZIP 解压到准备长期保留的目录
+3. 打开 Chrome → `chrome://extensions`
+4. 右上角开启「开发者模式」
+5. 点击「加载已解压的扩展程序」，选择解压后**直接包含 `manifest.json`** 的目录
+
+不要直接选择 ZIP 文件，也不要选择整个 PaperLens 源码仓库。以后下载新版本时，保持
+原加载目录路径不变，用新 ZIP 的内容替换该目录后在扩展管理页点击“重新加载”，可避免
+被浏览器视为另一个扩展；扩展本体不会随 MinerU 本地服务一起更新。
+
+### 配置 LLM 并开始使用
+
+1. 打开任一论文来源，例如：
    - 摘要页：<https://arxiv.org/abs/2310.06825>
    - HTML 全文：<https://arxiv.org/html/2310.06825>
    - ar5iv：<https://ar5iv.labs.arxiv.org/html/2310.06825>
    - PDF：<https://arxiv.org/pdf/2310.06825>（在 PDF 标签页点「解析本页 PDF」，可边看 PDF 边读解读）
    - 其他在线 PDF：首次解析时仅申请当前站点权限
    - 本地 `file://` PDF：需在扩展详情开启「允许访问文件网址」
-6. 点击工具栏的 PaperLens 图标 → SidePanel 打开
-7. 首次使用先点击 SidePanel 底部「设置 / 配置 API Key」，配置至少一家 LLM（例如
+2. 点击工具栏的 PaperLens 图标 → SidePanel 打开
+3. 首次使用先点击 SidePanel 底部「设置 / 配置 API Key」，配置至少一家 LLM（例如
    DeepSeek）→「测试连接」→ 连接成功后「保存设置」
-8. 网页来源点击「抽取本页」；PDF 点击「解析本页 PDF」，也可在 SidePanel 中选择或
+4. 网页来源点击「抽取本页」；PDF 点击「解析本页 PDF」，也可在 SidePanel 中选择或
    拖入本地 PDF
-9. 在「论文解读」Tab 选择粒度并生成解读；在「公式推导」Tab 选择公式并生成推导
-10. 在「导出 Markdown」Tab 预览并保存 `.md`
+5. 在「论文解读」Tab 选择粒度并生成解读；在「公式推导」Tab 选择公式并生成推导
+6. 在「导出 Markdown」Tab 预览并保存 `.md`
 
 ![从 SidePanel 打开设置并配置 DeepSeek](./docs/images/05-open-settings-deepseek.png)
 
@@ -59,7 +69,7 @@
 ## 启用本地 MinerU 公式识别（推荐用于 PDF）
 
 MinerU 公式增强默认关闭；未启用时，PDF 仍可完成正文解析、论文解读和 Phase C
-实验性公式候选。加载 `.output/chrome-mv3` 只安装了浏览器扩展，**不会同时安装或启动
+实验性公式候选。按上方流程加载 PaperLens 只安装了浏览器扩展，**不会同时安装或启动
 MinerU 服务**。
 
 **前置条件 / 耗时说明**
@@ -157,7 +167,13 @@ notepad.exe "$env:LOCALAPPDATA\PaperLens\MinerU\paperlens-mineru.toml"
 **只更新 MinerU 薄服务，不更新 Chrome 扩展本体**。卸载、doctor、手动检查更新、
 故障恢复与发布资产契约见 [`services/mineru/README.md`](./services/mineru/README.md)。
 
+Chrome 扩展与 MinerU 服务使用独立发布通道：`paperlens-v*` 提供扩展 ZIP，
+`mineru-v*` 提供 Windows 本地服务资产，更新其中一个不会自动更新另一个。
+
 ## 开发与构建
+
+本节面向需要修改源码或自行构建的开发者。`.output/` 是本地生成目录，不随 Git
+仓库提供；执行 `pnpm build` 后，再在 Chrome 中加载 `.output/chrome-mv3/`。
 
 ### 环境要求
 
@@ -175,7 +191,7 @@ pnpm test:pdf         # PDF 单元/功能回归
 pnpm test:phase-c:browser # 真实 PDF + 扩展 UI 冒烟（需本机 Chrome/Edge）
 pnpm test:mineru:client   # MinerU client/provider 契约与回退
 pnpm test:mineru:browser  # 真实本地 MinerU 浏览器闭环（需先启动服务）
-pnpm zip              # 打 zip 包以上架 Chrome Web Store
+pnpm zip              # 生成可发布的 Chrome ZIP（输出到 .output/）
 ```
 
 ## 目录结构
