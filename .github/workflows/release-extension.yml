@@ -1,0 +1,116 @@
+name: Release Chrome extension
+
+on:
+  push:
+    tags:
+      - 'paperlens-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-extension-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish stable Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4.4.0
+        with:
+          version: 10.33.2
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#paperlens-v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+
+          if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "::error::Tag version ${TAG_VERSION} does not match package.json version ${PACKAGE_VERSION}."
+            exit 1
+          fi
+
+          echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile
+        run: pnpm compile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Package Chrome extension
+        run: pnpm zip
+
+      - name: Validate and checksum assets
+        shell: bash
+        env:
+          ASSET_NAME: paperlens-${{ steps.version.outputs.version }}-chrome.zip
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ASSET_PATH=".output/$ASSET_NAME"
+          CHECKSUM_PATH="$ASSET_PATH.sha256"
+
+          test -f "$ASSET_PATH"
+          unzip -Z1 "$ASSET_PATH" | grep -Fx 'manifest.json' >/dev/null
+
+          MANIFEST_VERSION="$(
+            unzip -p "$ASSET_PATH" manifest.json |
+              node -e "const fs = require('node:fs'); console.log(JSON.parse(fs.readFileSync(0, 'utf8')).version)"
+          )"
+          if [[ "$MANIFEST_VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "::error::manifest.json version ${MANIFEST_VERSION} does not match package.json version ${PACKAGE_VERSION}."
+            exit 1
+          fi
+
+          (
+            cd .output
+            sha256sum "$ASSET_NAME" > "$ASSET_NAME.sha256"
+          )
+          grep -E "^[0-9a-f]{64}  ${ASSET_NAME}$" "$CHECKSUM_PATH"
+
+      - name: Reject an existing Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release ${GITHUB_REF_NAME} already exists; refusing to overwrite it."
+            exit 1
+          fi
+
+      - name: Publish stable Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_NAME: paperlens-${{ steps.version.outputs.version }}-chrome.zip
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            ".output/$ASSET_NAME" \
+            ".output/$ASSET_NAME.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "PaperLens Chrome $RELEASE_VERSION" \
+            --notes "PaperLens Chrome 扩展稳定发布。下载 ZIP 并解压，在 chrome://extensions 开启开发者模式后，加载包含 manifest.json 的目录。本 Release 只包含 Chrome 扩展，不包含或更新本地 MinerU 服务。"
