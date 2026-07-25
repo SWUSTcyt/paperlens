@@ -12,6 +12,7 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
+    "test:release": "node --test tests/releaseWorkflow.test.mjs",
     "test:pdf": "node --experimental-strip-types --test tests/pageCache.test.mjs tests/pdf*.test.mjs",
     "test:phase-b:browser": "pnpm build && node tests/phaseB.browser-smoke.mjs",
     "test:phase-b:permissions": "pnpm build && node tests/phaseB.browser-smoke.mjs --interactive-permissions",
